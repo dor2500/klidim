@@ -1,23 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { engine } from './engine'
+import { engine, type Effects, type LessonStats, type TeachEvent } from './engine'
+import { INSTRUMENTS, type InstrumentId } from './instruments'
+import { LESSONS, loadProgress, saveStars, starsFor, type Lesson } from './lessons'
 import { connectMidiInputs, pickMidi, saveSong, songFromMidi } from './midi'
-import { buildKeymap, fmtTime, keyNote, pianoRange, type Song } from './music'
+import { buildKeymap, codeLabel, fmtTime, isBlack, keyNote, noteName, pianoRange, type Song } from './music'
 import { BUILTIN } from './songs'
 import { Stage, TRACK_COLORS } from './Stage'
 import { Icon } from './icons'
 
 type Labels = 'keys' | 'notes' | 'none'
-type Prefs = { volume: number; octave: number; labels: Labels }
+type Prefs = Effects & { volume: number; octave: number; labels: Labels; instrument: InstrumentId; touch: number }
 
+const DEFAULT_FX: Effects = { reverb: 0.27, delay: 0, delayTime: 0.25, brightness: 1 }
+const DEFAULTS: Prefs = { volume: 0.8, octave: 0, labels: 'keys', instrument: 'piano', touch: 0.78, ...DEFAULT_FX }
 const PREFS_KEY = 'klidim-prefs'
 function loadPrefs(): Prefs {
-  const def: Prefs = { volume: 0.8, octave: 0, labels: 'keys' }
   try {
-    return { ...def, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
+    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
   } catch {
-    return def
+    return DEFAULTS
   }
 }
+const fxOf = (p: Prefs): Effects => ({ reverb: p.reverb, delay: p.delay, delayTime: p.delayTime, brightness: p.brightness })
+
+type Teacher = { text: string; tone: 'info' | 'good' | 'bad' }
+const PRAISE = ['יופי!', 'מצוין!', 'כל הכבוד!', 'נהדר!', 'בדיוק ככה!', 'איזה כישרון!']
 
 export function App(): React.JSX.Element {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -35,8 +42,17 @@ export function App(): React.JSX.Element {
   const [devices, setDevices] = useState<string[] | null>(null)
   const [menu, setMenu] = useState(false)
   const [help, setHelp] = useState(false)
+  const [settings, setSettings] = useState(false)
   const [played, setPlayed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  // teacher
+  const [learn, setLearn] = useState(false)
+  const [mine, setMine] = useState<number[]>([0])
+  const [lesson, setLesson] = useState<Lesson | null>(null)
+  const [teacher, setTeacher] = useState<Teacher | null>(null)
+  const [progress, setProgress] = useState({ index: 0, total: 0 })
+  const [result, setResult] = useState<(LessonStats & { stars: number }) | null>(null)
+  const [stars, setStars] = useState<Record<string, number>>(loadProgress)
   const seeking = useRef(false)
 
   const say = useCallback((msg: string) => {
@@ -45,16 +61,25 @@ export function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify(prefs))
+    } catch {
+      /* ignore */
+    }
     engine.setVolume(prefs.volume)
+    engine.setEffects(fxOf(prefs))
   }, [prefs])
+  useEffect(() => {
+    if (status === 'ready') engine.setInstrument(prefs.instrument)
+  }, [prefs.instrument, status])
 
   // boot: samples + MIDI keyboards
   useEffect(() => {
+    const p = loadPrefs()
     engine
-      .init()
+      .init(fxOf(p))
       .then(() => {
-        engine.setVolume(loadPrefs().volume)
+        engine.setVolume(p.volume)
         setStatus('ready')
       })
       .catch(() => setStatus('error'))
@@ -91,6 +116,55 @@ export function App(): React.JSX.Element {
     return pianoRange(extra)
   }, [keymap, song])
 
+  /** "רה4 (W)" – the note and the computer key that plays it. */
+  const keyFor = useCallback(
+    (m: number): string => {
+      for (const [code, n] of keymap) if (n === m) return codeLabel(code)
+      if (isBlack(m)) for (const [code, n] of keymap) if (n === m - 1) return `Shift+${codeLabel(code)}`
+      return ''
+    },
+    [keymap]
+  )
+  const describe = useCallback(
+    (notes: number[]): string =>
+      notes
+        .map((m) => {
+          const k = keyFor(m)
+          return k ? `${noteName(m)} · מקש ${k}` : `${noteName(m)} (הקליד המסומן)`
+        })
+        .join('  +  '),
+    [keyFor]
+  )
+
+  // teacher events
+  const lessonRef = useRef<Lesson | null>(null)
+  lessonRef.current = lesson
+  useEffect(() => {
+    engine.onTeach = (e: TeachEvent) => {
+      if (e.type === 'wait') {
+        setProgress({ index: e.index, total: e.total })
+        setTeacher((t) => ({
+          text: `${t?.tone === 'good' ? t.text + '  ' : ''}נגנו: ${describe(e.notes)}`,
+          tone: 'info'
+        }))
+      } else if (e.type === 'hit') {
+        setProgress({ index: e.index, total: e.total })
+        if (e.streak > 0 && e.streak % 8 === 0) {
+          setTeacher({ text: `${PRAISE[(e.streak / 8) % PRAISE.length]} ${e.streak} ברצף 🔥`, tone: 'good' })
+        } else setTeacher((t) => (t?.tone === 'bad' ? { text: PRAISE[e.index % PRAISE.length], tone: 'good' } : t))
+      } else if (e.type === 'wrong') {
+        setTeacher({ text: `זה ${noteName(e.midi)}. צריך: ${describe(e.expected)}`, tone: 'bad' })
+      } else if (e.type === 'done') {
+        const s = starsFor(e.stats.accuracy)
+        const l = lessonRef.current
+        if (l) setStars(saveStars(l.id, s))
+        setResult({ ...e.stats, stars: s })
+        setTeacher({ text: 'סיימתם! 🎉', tone: 'good' })
+        setPlaying(false)
+      }
+    }
+  }, [describe])
+
   // computer keyboard
   const pressed = useRef(new Map<string, number>())
   useEffect(() => {
@@ -122,6 +196,7 @@ export function App(): React.JSX.Element {
         setSustain(false)
         setMenu(false)
         setHelp(false)
+        setSettings(false)
         return
       }
       const base = keymap.get(e.code)
@@ -129,7 +204,7 @@ export function App(): React.JSX.Element {
       const m = keyNote(base, e.shiftKey)
       e.preventDefault()
       pressed.current.set(e.code, m)
-      engine.noteOn(m, 0.78)
+      engine.noteOn(m, prefs.touch)
       setPlayed(true)
     }
     const up = (e: KeyboardEvent): void => {
@@ -155,7 +230,7 @@ export function App(): React.JSX.Element {
       window.removeEventListener('keyup', up)
       window.removeEventListener('blur', blur)
     }
-  }, [keymap])
+  }, [keymap, prefs.touch])
 
   // ---------- song actions ----------
   const loadSong = (s: Song | null): void => {
@@ -167,17 +242,25 @@ export function App(): React.JSX.Element {
     setSpeed(1)
     engine.setSpeed(1)
     setMenu(false)
+    setLearn(false)
+    setLesson(null)
+    setTeacher(null)
+    setResult(null)
   }
   const togglePlay = (): void => {
     if (!song) return
     if (engine.playing) engine.pause()
-    else engine.play()
+    else {
+      setResult(null)
+      engine.play()
+    }
     setPlaying(engine.playing)
   }
   const stopSong = (): void => {
     engine.stop()
     setPlaying(false)
     setTime(0)
+    if (engine.learn) setProgress(engine.lessonProgress)
   }
   const openFile = async (): Promise<void> => {
     setMenu(false)
@@ -193,6 +276,42 @@ export function App(): React.JSX.Element {
     else engine.muted.add(i)
     setMuted([...engine.muted])
   }
+
+  // ---------- teacher ----------
+  const setMode = (on: boolean, tracks = mine): void => {
+    if (!song) return
+    const valid = tracks.filter((t) => t < song.tracks.length)
+    const use = valid.length ? valid : [0]
+    engine.stop()
+    engine.setLearn(on, use)
+    setPlaying(false)
+    setTime(0)
+    setLearn(on)
+    setMine(use)
+    setResult(null)
+    setProgress(engine.lessonProgress)
+    setTeacher(
+      on
+        ? { text: lesson?.intro ?? 'אני אחכה לכם בכל צליל. הקלידים שצריך לנגן יהבהבו בצהוב. לחצו ▶ כשאתם מוכנים.', tone: 'info' }
+        : null
+    )
+  }
+  const toggleMine = (i: number): void => {
+    const next = mine.includes(i) ? mine.filter((t) => t !== i) : [...mine, i].sort()
+    if (!next.length) return
+    setMode(true, next)
+  }
+  const startLesson = (l: Lesson): void => {
+    const s = l.make()
+    loadSong(s)
+    engine.setLearn(true, l.play)
+    setLesson(l)
+    setLearn(true)
+    setMine(l.play)
+    setProgress(engine.lessonProgress)
+    setTeacher({ text: l.intro, tone: 'info' })
+  }
+  const nextLesson = lesson ? LESSONS[LESSONS.findIndex((l) => l.id === lesson.id) + 1] : undefined
 
   // drag & drop a .mid file anywhere
   useEffect(() => {
@@ -237,7 +356,9 @@ export function App(): React.JSX.Element {
   }
 
   const setOct = (d: number): void => setPrefs((p) => ({ ...p, octave: Math.max(-2, Math.min(2, p.octave + d)) }))
+  const set = <K extends keyof Prefs>(k: K, v: Prefs[K]): void => setPrefs((p) => ({ ...p, [k]: v }))
   const blurAfter = (e: React.MouseEvent): void => (e.currentTarget as HTMLElement).blur()
+  const inst = INSTRUMENTS.find((i) => i.id === prefs.instrument) ?? INSTRUMENTS[0]
 
   return (
     <div className="app" onMouseUp={blurAfter}>
@@ -252,18 +373,29 @@ export function App(): React.JSX.Element {
 
         <div className="song-picker">
           <button className={`picker ${menu ? 'open' : ''}`} onClick={() => setMenu((v) => !v)}>
-            <Icon name="music" />
-            <span className="picker-name">{song ? song.name : 'בחירת שיר'}</span>
+            <Icon name={lesson ? 'teacher' : 'music'} />
+            <span className="picker-name">{lesson ? lesson.title : song ? song.name : 'בחירת שיר או שיעור'}</span>
             <Icon name="chevron" />
           </button>
           {menu && (
             <>
               <div className="scrim" onClick={() => setMenu(false)} />
               <div className="menu" role="menu">
-                <button className="menu-item accent" onClick={openFile}>
-                  <Icon name="folder" /> פתיחת קובץ MIDI…
-                </button>
-                <div className="menu-label">שירים לתרגול</div>
+                <div className="menu-label">שיעורים עם המורה</div>
+                <div className="lesson-list">
+                  {LESSONS.map((l, i) => (
+                    <button key={l.id} className="menu-item lesson" onClick={() => startLesson(l)}>
+                      <span className="step">{i + 1}</span>
+                      <span className="lesson-title">{l.title}</span>
+                      <span className="stars" aria-label={`${stars[l.id] ?? 0} כוכבים`}>
+                        {[1, 2, 3].map((n) => (
+                          <span key={n} className={n <= (stars[l.id] ?? 0) ? 'on' : ''}>★</span>
+                        ))}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="menu-label">שירים</div>
                 {BUILTIN.map((b) => {
                   const s = b.make()
                   return (
@@ -273,6 +405,9 @@ export function App(): React.JSX.Element {
                     </button>
                   )
                 })}
+                <button className="menu-item accent" onClick={openFile}>
+                  <Icon name="folder" /> פתיחת קובץ MIDI…
+                </button>
                 {recordings.length > 0 && <div className="menu-label">ההקלטות שלי</div>}
                 {recordings.map((r, i) => (
                   <button key={i} className="menu-item" onClick={() => loadSong(r)}>
@@ -298,59 +433,98 @@ export function App(): React.JSX.Element {
 
       <main className="main">
         {song && (
-          <div className="transport">
-            <button className="round primary" onClick={togglePlay} title={playing ? 'השהיה' : 'ניגון'}>
-              <Icon name={playing ? 'pause' : 'play'} />
-            </button>
-            <button className="round" onClick={stopSong} title="עצירה">
-              <Icon name="stop" />
-            </button>
-            <span className="clock">{fmtTime(time)}</span>
-            <input
-              className="seek"
-              type="range"
-              dir="ltr"
-              min={0}
-              max={song.duration || 1}
-              step={0.01}
-              value={Math.min(time, song.duration)}
-              onPointerDown={() => (seeking.current = true)}
-              onPointerUp={() => (seeking.current = false)}
-              onChange={(e) => {
-                const t = Number(e.target.value)
-                setTime(t)
-                engine.seek(t)
-              }}
-              style={{ ['--p' as string]: `${(Math.min(time, song.duration) / (song.duration || 1)) * 100}%` }}
-            />
-            <span className="clock dim">{fmtTime(song.duration)}</span>
-            <div className="seg" title="מהירות">
-              {[0.5, 0.75, 1, 1.25].map((s) => (
-                <button
-                  key={s}
-                  className={speed === s ? 'on' : ''}
-                  onClick={() => {
-                    setSpeed(s)
-                    engine.setSpeed(s)
-                  }}
-                >
-                  {Math.round(s * 100)}%
+          <div className="top-stack">
+            <div className="transport">
+              <button className="round primary" onClick={togglePlay} title={playing ? 'השהיה' : 'ניגון'}>
+                <Icon name={playing ? 'pause' : 'play'} />
+              </button>
+              <button className="round" onClick={stopSong} title="עצירה">
+                <Icon name="stop" />
+              </button>
+              <span className="clock">{fmtTime(time)}</span>
+              <input
+                className="seek"
+                type="range"
+                dir="ltr"
+                min={0}
+                max={song.duration || 1}
+                step={0.01}
+                value={Math.min(time, song.duration)}
+                onPointerDown={() => (seeking.current = true)}
+                onPointerUp={() => (seeking.current = false)}
+                onChange={(e) => {
+                  const t = Number(e.target.value)
+                  setTime(t)
+                  engine.seek(t)
+                }}
+                style={{ ['--p' as string]: `${(Math.min(time, song.duration) / (song.duration || 1)) * 100}%` }}
+              />
+              <span className="clock dim">{fmtTime(song.duration)}</span>
+              <div className="seg" title="מהירות">
+                {[0.5, 0.75, 1, 1.25].map((s) => (
+                  <button
+                    key={s}
+                    className={speed === s ? 'on' : ''}
+                    onClick={() => {
+                      setSpeed(s)
+                      engine.setSpeed(s)
+                    }}
+                  >
+                    {Math.round(s * 100)}%
+                  </button>
+                ))}
+              </div>
+              <div className="seg mode" title="איך לנגן את השיר">
+                <button className={!learn ? 'on' : ''} onClick={() => setMode(false)}>האזנה</button>
+                <button className={learn ? 'on teach' : ''} onClick={() => setMode(true)}>
+                  <Icon name="teacher" /> עם מורה
                 </button>
-              ))}
+              </div>
+              <div className="tracks">
+                {learn && <span className="tracks-label">אני מנגן:</span>}
+                {song.tracks.map((t, i) =>
+                  learn ? (
+                    <button key={i} className={`track ${mine.includes(i) ? 'mine' : 'off'}`} onClick={() => toggleMine(i)}>
+                      <span className="dot" style={{ background: TRACK_COLORS[i % TRACK_COLORS.length] }} />
+                      {t.name}
+                    </button>
+                  ) : (
+                    <button
+                      key={i}
+                      className={`track ${muted.includes(i) ? 'off' : ''}`}
+                      onClick={() => toggleTrack(i)}
+                      title={muted.includes(i) ? 'הפעלת הערוץ' : 'השתקת הערוץ'}
+                    >
+                      <span className="dot" style={{ background: TRACK_COLORS[i % TRACK_COLORS.length] }} />
+                      {t.name}
+                    </button>
+                  )
+                )}
+              </div>
             </div>
-            <div className="tracks">
-              {song.tracks.map((t, i) => (
-                <button
-                  key={i}
-                  className={`track ${muted.includes(i) ? 'off' : ''}`}
-                  onClick={() => toggleTrack(i)}
-                  title={muted.includes(i) ? 'הפעלת הערוץ' : 'השתקת הערוץ (כדי לנגן אותו בעצמכם)'}
-                >
-                  <span className="dot" style={{ background: TRACK_COLORS[i % TRACK_COLORS.length] }} />
-                  {t.name}
-                </button>
-              ))}
-            </div>
+
+            {learn && teacher && (
+              <div className={`teacher ${teacher.tone}`} role="status" aria-live="polite">
+                <span className="teacher-avatar" aria-hidden>
+                  <Icon name="teacher" />
+                </span>
+                <div className="teacher-body">
+                  <div className="teacher-name">המורה</div>
+                  <div className="teacher-text">{teacher.text}</div>
+                  {progress.total > 0 && (
+                    <div className="teacher-progress">
+                      <div style={{ width: `${(progress.index / progress.total) * 100}%` }} />
+                    </div>
+                  )}
+                </div>
+                {!playing && (
+                  <button className="btn primary" onClick={togglePlay}>
+                    <Icon name="play" />{' '}
+                    {progress.index === 0 ? 'התחלה' : progress.index >= progress.total ? 'שוב מההתחלה' : 'המשך'}
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -362,11 +536,11 @@ export function App(): React.JSX.Element {
               באוקטבה מעל הקודמת. <b>Shift</b> עם מקש מנגן את הקליד השחור, ומקש הרווח הוא דוושת ההדהוד.
             </p>
             <div className="welcome-actions">
-              <button className="btn primary" onClick={() => setMenu(true)}>
-                <Icon name="music" /> שירים לתרגול
+              <button className="btn primary" onClick={() => startLesson(LESSONS[0])}>
+                <Icon name="teacher" /> שיעור ראשון עם המורה
               </button>
-              <button className="btn" onClick={openFile}>
-                <Icon name="folder" /> פתיחת קובץ MIDI
+              <button className="btn" onClick={() => setMenu(true)}>
+                <Icon name="music" /> שירים ושיעורים
               </button>
             </div>
           </div>
@@ -389,6 +563,10 @@ export function App(): React.JSX.Element {
         </div>
 
         <div className="group">
+          <button className="inst-chip" onClick={() => setSettings(true)} title="החלפת כלי נגינה">
+            <span className="emoji" aria-hidden>{inst.emoji}</span>
+            {inst.name}
+          </button>
           <label className="ctl">
             <span>אוקטבה</span>
             <span className="stepper">
@@ -427,28 +605,133 @@ export function App(): React.JSX.Element {
               max={1}
               step={0.01}
               value={prefs.volume}
-              onChange={(e) => setPrefs((p) => ({ ...p, volume: Number(e.target.value) }))}
+              onChange={(e) => set('volume', Number(e.target.value))}
               style={{ ['--p' as string]: `${prefs.volume * 100}%` }}
             />
           </label>
-          <div className="seg" title="מה כתוב על הקלידים">
-            {(
-              [
-                ['keys', 'מקשים'],
-                ['notes', 'תווים'],
-                ['none', 'ללא']
-              ] as const
-            ).map(([v, l]) => (
-              <button key={v} className={prefs.labels === v ? 'on' : ''} onClick={() => setPrefs((p) => ({ ...p, labels: v }))}>
-                {l}
-              </button>
-            ))}
-          </div>
+          <button className="round" onClick={() => setSettings(true)} title="הגדרות צליל">
+            <Icon name="gear" />
+          </button>
           <button className="round" onClick={() => setHelp(true)} title="קיצורי מקלדת">
             <Icon name="help" />
           </button>
         </div>
       </footer>
+
+      {settings && (
+        <div className="drawer-wrap" onClick={() => setSettings(false)}>
+          <aside className="drawer" onClick={(e) => e.stopPropagation()} aria-label="הגדרות">
+            <div className="drawer-head">
+              <h2>הגדרות</h2>
+              <button className="round" onClick={() => setSettings(false)} aria-label="סגירה">
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <section>
+              <h3>כלי נגינה</h3>
+              <div className="inst-grid">
+                {INSTRUMENTS.map((i) => (
+                  <button key={i.id} className={`inst ${prefs.instrument === i.id ? 'on' : ''}`} onClick={() => set('instrument', i.id)}>
+                    <span className="emoji" aria-hidden>{i.emoji}</span>
+                    <span className="inst-name">{i.name}</span>
+                    <span className="inst-hint">{i.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3>אפקטים</h3>
+              <Slider label="הד (ריוורב)" hint="כמה החדר מהדהד" value={prefs.reverb} onChange={(v) => set('reverb', v)} />
+              <Slider label="השהייה (אקו)" hint="חזרות של הצליל אחרי הנגינה" value={prefs.delay} onChange={(v) => set('delay', v)} />
+              <div className="row">
+                <span>זמן ההשהייה</span>
+                <div className="seg">
+                  {(
+                    [
+                      [0.12, 'קצר'],
+                      [0.25, 'בינוני'],
+                      [0.42, 'ארוך']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.delayTime === v ? 'on' : ''} onClick={() => set('delayTime', v)} disabled={prefs.delay === 0}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <Slider label="בהירות" hint="שמאלה: צליל רך ועמום. ימינה: צליל חד" value={prefs.brightness} onChange={(v) => set('brightness', v)} />
+            </section>
+
+            <section>
+              <h3>נגינה</h3>
+              <Slider label="עוצמת הקשה מהמקלדת" hint="כמה חזק נשמע מקש במקלדת המחשב" value={(prefs.touch - 0.3) / 0.7} onChange={(v) => set('touch', 0.3 + v * 0.7)} />
+              <div className="row">
+                <span>מה כתוב על הקלידים</span>
+                <div className="seg">
+                  {(
+                    [
+                      ['keys', 'מקשים'],
+                      ['notes', 'תווים'],
+                      ['none', 'ללא']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.labels === v ? 'on' : ''} onClick={() => set('labels', v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <button className="btn ghost reset" onClick={() => setPrefs((p) => ({ ...p, ...DEFAULT_FX, touch: DEFAULTS.touch, instrument: 'piano' }))}>
+              איפוס להגדרות ברירת המחדל
+            </button>
+          </aside>
+        </div>
+      )}
+
+      {result && (
+        <div className="modal-wrap" onClick={() => setResult(null)}>
+          <div className="modal result" onClick={(e) => e.stopPropagation()}>
+            <div className="big-stars" aria-label={`${result.stars} כוכבים`}>
+              {[1, 2, 3].map((n) => (
+                <span key={n} className={n <= result.stars ? 'on' : ''} style={{ animationDelay: `${n * 0.12}s` }}>★</span>
+              ))}
+            </div>
+            <h2>{result.stars === 3 ? 'מושלם!' : result.stars === 2 ? 'כל הכבוד!' : 'סיימתם! עוד קצת תרגול'}</h2>
+            <div className="stats">
+              <div><b>{result.accuracy}%</b><span>דיוק</span></div>
+              <div><b>{result.notes}</b><span>צלילים נכונים</span></div>
+              <div><b>{result.wrong}</b><span>טעויות</span></div>
+              <div><b>{result.bestStreak}</b><span>הרצף הכי ארוך</span></div>
+            </div>
+            <p className="dim">
+              {result.stars === 3
+                ? 'ניגנתם כמעט בלי טעויות. אפשר לנסות במהירות גבוהה יותר או לעבור לשיעור הבא.'
+                : 'נסו שוב לאט. המורה מחכה בכל צליל, אז אין צורך למהר.'}
+            </p>
+            <div className="welcome-actions">
+              {nextLesson && (
+                <button className="btn primary" onClick={() => startLesson(nextLesson)}>
+                  השיעור הבא: {nextLesson.title}
+                </button>
+              )}
+              <button
+                className={`btn ${nextLesson ? '' : 'primary'}`}
+                onClick={() => {
+                  setResult(null)
+                  stopSong()
+                  setTeacher({ text: 'עוד פעם מההתחלה. לחצו ▶ כשאתם מוכנים.', tone: 'info' })
+                }}
+              >
+                שוב
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {help && (
         <div className="modal-wrap" onClick={() => setHelp(false)}>
@@ -463,7 +746,10 @@ export function App(): React.JSX.Element {
               <li><kbd>↑</kbd> <kbd>↓</kbd> העלאה או הורדה בחצי טון</li>
               <li><kbd>Esc</kbd> השתקת כל הצלילים</li>
             </ul>
-            <p className="dim">אפשר לגרור קובץ MIDI לחלון כדי לפתוח אותו. כדי לתרגל יד אחת, כבו את הערוץ שלה בסרגל השיר ונגנו אותו בעצמכם.</p>
+            <p className="dim">
+              <b>המורה:</b> בחרו שיעור בתפריט למעלה, או פתחו שיר ובחרו "עם מורה". השיר עוצר בכל צליל שלכם ומחכה
+              שתנגנו את הקליד שמהבהב בצהוב.
+            </p>
             <p className="credit">
               צליל הפסנתר: <bdi dir="ltr">Salamander Grand Piano · Alexander Holm · CC BY 3.0</bdi>
             </p>
@@ -474,5 +760,27 @@ export function App(): React.JSX.Element {
 
       {toast && <div className="toast">{toast}</div>}
     </div>
+  )
+}
+
+function Slider({ label, hint, value, onChange }: { label: string; hint: string; value: number; onChange: (v: number) => void }): React.JSX.Element {
+  return (
+    <label className="slider">
+      <span className="slider-top">
+        <span>{label}</span>
+        <b>{Math.round(value * 100)}%</b>
+      </span>
+      <input
+        type="range"
+        dir="ltr"
+        min={0}
+        max={1}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{ ['--p' as string]: `${value * 100}%` }}
+      />
+      <span className="slider-hint">{hint}</span>
+    </label>
   )
 }

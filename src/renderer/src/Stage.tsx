@@ -49,6 +49,7 @@ export function Stage({ lo, hi, keymap, labels }: Props): React.JSX.Element {
     const keyAt = new Map(keys.map((k) => [k.midi, k]))
     let raf = 0
     let lastSongKeys = new Map<number, number>()
+    let lastExpected = new Set<number>()
 
     const frame = (): void => {
       raf = requestAnimationFrame(frame)
@@ -82,8 +83,11 @@ export function Stage({ lo, hi, keymap, labels }: Props): React.JSX.Element {
           const muted = engine.muted.has(n.track)
           const yBottom = H - (n.time - t) * pps
           const yTop = yBottom - n.duration * pps
-          const active = engine.playing && n.time <= t && t < n.time + n.duration
-          if (active && !muted) songKeys.set(n.midi, n.track)
+          // while the teacher waits, notes at the waiting point haven't sounded yet
+          const held = engine.waiting && n.time >= t - 0.001
+          const active = engine.playing && !held && n.time <= t && t < n.time + n.duration
+          const mine = engine.learn && engine.practice.has(n.track)
+          if (active && !muted && !mine) songKeys.set(n.midi, n.track)
           const x = k.x * unit + 1.5
           const w = k.w * unit - 3
           const color = TRACK_COLORS[n.track % TRACK_COLORS.length]
@@ -137,6 +141,30 @@ export function Stage({ lo, hi, keymap, labels }: Props): React.JSX.Element {
       }
       for (const m of lastSongKeys.keys()) if (!songKeys.has(m)) keyEls.current.get(m)?.classList.remove('song')
       lastSongKeys = songKeys
+
+      // teacher: the keys to press next
+      const exp = new Set(engine.playing ? engine.expected : [])
+      for (const m of exp) if (!lastExpected.has(m)) keyEls.current.get(m)?.classList.add('expect')
+      for (const m of lastExpected) if (!exp.has(m)) keyEls.current.get(m)?.classList.remove('expect')
+      lastExpected = exp
+      if (exp.size) {
+        // a glowing marker above each key the teacher is waiting for
+        const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 160)
+        for (const m of exp) {
+          const k = keyAt.get(m)
+          if (!k) continue
+          const x = k.x * unit + k.w * unit / 2
+          ctx.globalAlpha = engine.waiting ? pulse : 0.5
+          ctx.fillStyle = '#fbbf24'
+          ctx.beginPath()
+          ctx.moveTo(x - 9, H - 30)
+          ctx.lineTo(x + 9, H - 30)
+          ctx.lineTo(x, H - 16)
+          ctx.closePath()
+          ctx.fill()
+          ctx.globalAlpha = 1
+        }
+      }
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)

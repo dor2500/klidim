@@ -9,7 +9,7 @@ function m(s: string): number {
 }
 
 /** "E5:1 D5:1 -:2" → notes; numbers are lengths in beats, "-" is a rest, "C4+E4" a chord. */
-function seq(text: string, beat: number, track: number, start = 0, vel = 0.75): Note[] {
+export function seq(text: string, beat: number, track: number, start = 0, vel = 0.75): Note[] {
   const out: Note[] = []
   let t = start
   for (const tok of text.trim().split(/\s+/)) {
@@ -23,7 +23,7 @@ function seq(text: string, beat: number, track: number, start = 0, vel = 0.75): 
   return out
 }
 
-function odeToJoy(): Song {
+export function odeToJoy(): Song {
   const b = 0.45
   const rh = seq(
     `E4 E4 F4 G4 G4 F4 E4 D4 C4 C4 D4 E4 E4:1.5 D4:0.5 D4:2
@@ -38,7 +38,7 @@ function odeToJoy(): Song {
   return makeSong('אודה לשמחה – בטהובן', [...rh, ...lh])
 }
 
-function twinkle(): Song {
+export function twinkle(): Song {
   const b = 0.5
   const rh = seq(
     `C4 C4 G4 G4 A4 A4 G4:2 F4 F4 E4 E4 D4 D4 C4:2
@@ -51,7 +51,7 @@ function twinkle(): Song {
   return makeSong('כוכב קטן', [...rh, ...lh])
 }
 
-function furElise(): Song {
+export function furElise(): Song {
   const s = 0.16 // one sixteenth
   const A = `E5 D#5 E5 D#5 E5 B4 D5 C5`
   const rh = seq(
