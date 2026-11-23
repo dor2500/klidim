@@ -1,0 +1,66 @@
+{
+  "name": "nebula-piano",
+  "productName": "Nebula Piano",
+  "version": "0.1.0",
+  "description": "פסנתר במחשב בעברית: נגינה במקלדת, הקלטה, שירי MIDI ומקלדת MIDI",
+  "private": true,
+  "main": "out/main/index.js",
+  "author": "Nebula Projects",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "web": "vite --config vite.web.config.ts",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dist": "electron-vite build && electron-builder --win"
+  },
+  "build": {
+    "appId": "app.nebula.piano",
+    "productName": "Nebula Piano",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Nebula Piano",
+      "artifactName": "NebulaPiano-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "NebulaPiano-Portable-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "@fontsource-variable/rubik": "^5.3.0",
+    "@tonejs/midi": "^2.0.28",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8"
+  },
+  "license": "MIT",
+  "repository": {
+    "url": "https://github.com/dor2500/nebula-piano.git",
+    "type": "git"
+  }
+}
