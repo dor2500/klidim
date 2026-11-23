@@ -1,11 +1,11 @@
 {
-  "name": "nebula-piano",
-  "productName": "Nebula Piano",
+  "name": "klidim",
+  "productName": "Klidim",
   "version": "0.1.0",
   "description": "פסנתר במחשב בעברית: נגינה במקלדת, הקלטה, שירי MIDI ומקלדת MIDI",
   "private": true,
   "main": "out/main/index.js",
-  "author": "Nebula Projects",
+  "author": "dor2500",
   "scripts": {
     "dev": "electron-vite dev",
     "web": "vite --config vite.web.config.ts",
@@ -14,8 +14,8 @@
     "dist": "electron-vite build && electron-builder --win"
   },
   "build": {
-    "appId": "app.nebula.piano",
-    "productName": "Nebula Piano",
+    "appId": "app.klidim",
+    "productName": "Klidim",
     "directories": {
       "output": "dist"
     },
@@ -33,11 +33,11 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Nebula Piano",
-      "artifactName": "NebulaPiano-Setup-${version}.${ext}"
+      "shortcutName": "קלידים",
+      "artifactName": "Klidim-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "NebulaPiano-Portable-${version}.${ext}"
+      "artifactName": "Klidim-Portable-${version}.${ext}"
     }
   },
   "dependencies": {
@@ -60,7 +60,7 @@
   },
   "license": "MIT",
   "repository": {
-    "url": "https://github.com/dor2500/nebula-piano.git",
+    "url": "https://github.com/dor2500/klidim.git",
     "type": "git"
   }
 }

@@ -1,10 +1,10 @@
 <div dir="rtl">
 
 <p align="center">
-  <img src="build/icon.png" width="110" alt="Nebula Piano" />
+  <img src="build/icon.png" width="110" alt="קלידים" />
 </p>
 
-<h1 align="center">Nebula Piano · פסנתר</h1>
+<h1 align="center">קלידים · Klidim</h1>
 
 <p align="center">
   <b>פסנתר למחשב, בעברית מלאה ובעיצוב מודרני.</b><br />
@@ -12,16 +12,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dor2500/nebula-piano/releases/latest"><img src="https://img.shields.io/github/v/release/dor2500/nebula-piano?label=%D7%92%D7%A8%D7%A1%D7%94&color=8b7cf6" alt="גרסה" /></a>
+  <a href="https://github.com/dor2500/klidim/releases/latest"><img src="https://img.shields.io/github/v/release/dor2500/klidim?label=%D7%92%D7%A8%D7%A1%D7%94&color=8b7cf6" alt="גרסה" /></a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0b0d14?logo=windows" alt="Windows" />
   <img src="https://img.shields.io/badge/%D7%A9%D7%A4%D7%94-%D7%A2%D7%91%D7%A8%D7%99%D7%AA-22d3ee" alt="עברית" />
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6366f1" alt="MIT" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/dor2500/nebula-piano/releases/latest/download/NebulaPiano-Setup-0.1.0.exe"><b>⬇️ הורדה להתקנה</b></a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.1.0.exe"><b>⬇️ הורדה להתקנה</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/nebula-piano/releases/latest/download/NebulaPiano-Portable-0.1.0.exe">גרסה ניידת (בלי התקנה)</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.1.0.exe">גרסה ניידת (בלי התקנה)</a>
 </p>
 
 ![שיר מתנגן עם תווים נופלים](docs/screenshots/playing.png)
@@ -50,18 +50,18 @@
 
 ## התקנה
 
-1. מורידים את **[NebulaPiano-Setup-0.1.0.exe](https://github.com/dor2500/nebula-piano/releases/latest/download/NebulaPiano-Setup-0.1.0.exe)** מדף [הגרסאות](https://github.com/dor2500/nebula-piano/releases/latest).
+1. מורידים את **[Klidim-Setup-0.1.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.1.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
 2. מפעילים את הקובץ ובוחרים לאן להתקין.
-3. נוצר קיצור דרך בשולחן העבודה ובתפריט התחל בשם **Nebula Piano**.
+3. נוצר קיצור דרך בשולחן העבודה ובתפריט התחל בשם **קלידים**.
 
-**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/nebula-piano/releases/latest/download/NebulaPiano-Portable-0.1.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
+**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.1.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
 
 > [!NOTE]
 > התוכנה לא חתומה דיגיטלית, ולכן ייתכן ש-Windows יציג את המסך "Windows protected your PC". לוחצים על **More info** ואז על **Run anyway**.
 
 **דרישות:** Windows 10 או 11, 64 ביט. לא צריך חיבור לאינטרנט – הצליל כלול בתוכנה.
 
-**הסרה:** הגדרות ← אפליקציות ← Nebula Piano ← הסרה.
+**הסרה:** הגדרות ← אפליקציות ← Klidim ← הסרה.
 
 ## איך מנגנים
 
@@ -110,8 +110,8 @@
 צריך [Node.js](https://nodejs.org) 20 ומעלה.
 
 ```bash
-git clone https://github.com/dor2500/nebula-piano.git
-cd nebula-piano
+git clone https://github.com/dor2500/klidim.git
+cd klidim
 npm install
 npm run dev      # הפעלה במצב פיתוח
 npm run dist     # בניית קובץ התקנה וגרסה ניידת לתיקייה dist

@@ -9,7 +9,7 @@ import { Icon } from './icons'
 type Labels = 'keys' | 'notes' | 'none'
 type Prefs = { volume: number; octave: number; labels: Labels }
 
-const PREFS_KEY = 'nebula-piano-prefs'
+const PREFS_KEY = 'klidim-prefs'
 function loadPrefs(): Prefs {
   const def: Prefs = { volume: 0.8, octave: 0, labels: 'keys' }
   try {
@@ -246,8 +246,8 @@ export function App(): React.JSX.Element {
           <span className="logo" aria-hidden>
             <Icon name="logo" />
           </span>
-          <span className="brand-name">פסנתר</span>
-          <span className="brand-sub">Nebula</span>
+          <span className="brand-name">קלידים</span>
+          <span className="brand-sub">Klidim</span>
         </div>
 
         <div className="song-picker">

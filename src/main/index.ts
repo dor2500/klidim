@@ -19,7 +19,7 @@ function createWindow(): void {
     minHeight: 660,
     show: false,
     backgroundColor: BG,
-    title: 'Nebula Piano',
+    title: 'קלידים',
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: BG, symbolColor: '#c9cdee', height: 48 },
     webPreferences: {
