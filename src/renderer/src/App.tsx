@@ -4,6 +4,7 @@ import { INSTRUMENTS, type InstrumentId } from './instruments'
 import { LESSONS, loadProgress, saveStars, starsFor, type Lesson } from './lessons'
 import { connectMidiInputs, pickMidi, saveSong, songFromMidi } from './midi'
 import {
+  buildChordPads,
   buildKeymap,
   codeLabel,
   detectChord,
@@ -24,7 +25,7 @@ import { Icon } from './icons'
 import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle } from './ai'
 import { HarmonicWheel } from './HarmonicWheel'
 
-const APP_VERSION = '0.6.0'
+const APP_VERSION = '0.7.0'
 
 type ReleaseAsset = { name: string; url: string; size: number }
 type UpdateState = {
@@ -49,7 +50,8 @@ function isNewerVersion(latest: string, current: string): boolean {
 }
 
 type Labels = 'keys' | 'notes' | 'none'
-type ThemeId = 'brass' | 'aurora' | 'rosewood' | 'ivory'
+type ThemeId = 'brass' | 'aurora' | 'rosewood' | 'cyber' | 'forest' | 'ivory'
+type KeyStyle = 'classic' | 'neon' | 'wood'
 
 type Prefs = Effects & {
   volume: number
@@ -69,15 +71,19 @@ type Prefs = Effects & {
   visualizer: boolean
   visualMode: VisualMode
   showWheel: boolean
+  showPads: boolean
   tuningHz: 432 | 440 | 442
   autoCheckUpdates: boolean
   theme: ThemeId
+  keyStyle: KeyStyle
 }
 
 const THEMES: { id: ThemeId; name: string; bg: string; accent: string }[] = [
   { id: 'brass', name: 'אולפן זהב', bg: '#0b0c10', accent: '#e5a93c' },
   { id: 'aurora', name: 'אורורה', bg: '#090d16', accent: '#8b7cf6' },
   { id: 'rosewood', name: 'עץ רוזווד', bg: '#140c0b', accent: '#e08e6d' },
+  { id: 'cyber', name: 'ניאון סייבר', bg: '#070a10', accent: '#22d3ee' },
+  { id: 'forest', name: 'אמרלד לילה', bg: '#08110e', accent: '#34d399' },
   { id: 'ivory', name: 'אולם מואר', bg: '#f3f0e8', accent: '#b45309' }
 ]
 
@@ -107,9 +113,11 @@ const DEFAULTS: Prefs = {
   visualizer: true,
   visualMode: 'galaxy',
   showWheel: false,
+  showPads: false,
   tuningHz: 440,
   autoCheckUpdates: true,
   theme: 'brass',
+  keyStyle: 'classic',
   ...DEFAULT_FX
 }
 const PREFS_KEY = 'klidim-prefs'
@@ -170,6 +178,7 @@ export function App(): React.JSX.Element {
   const [recordings, setRecordings] = useState<Song[]>(loadRecordings)
   const [devices, setDevices] = useState<string[] | null>(null)
   const [menu, setMenu] = useState(false)
+  const [themeMenu, setThemeMenu] = useState(false)
   const [help, setHelp] = useState(false)
   const [settings, setSettings] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -365,6 +374,10 @@ export function App(): React.JSX.Element {
 
   const chord = useMemo(() => detectChord(activeNotes), [activeNotes])
   const scaleNotes = useMemo(() => scalePitchClasses(prefs.scaleRoot, prefs.scaleId), [prefs.scaleRoot, prefs.scaleId])
+  const chordPads = useMemo(
+    () => buildChordPads(prefs.scaleRoot, prefs.scaleId === 'minor' || prefs.scaleId === 'minorPent'),
+    [prefs.scaleRoot, prefs.scaleId]
+  )
 
   /** "רה4 · מקש W" – the note and the computer key that plays it. */
   const keyFor = useCallback(
@@ -445,6 +458,7 @@ export function App(): React.JSX.Element {
         engine.allLiveOff()
         setSustain(false)
         setMenu(false)
+        setThemeMenu(false)
         setHelp(false)
         setSettings(false)
         setAiOpen(false)
@@ -706,7 +720,7 @@ export function App(): React.JSX.Element {
   const layerInst = prefs.layerInstrument !== 'none' ? INSTRUMENTS.find((i) => i.id === prefs.layerInstrument) : null
 
   return (
-    <div className="app" data-theme={prefs.theme} onMouseUp={blurAfter}>
+    <div className="app" data-theme={prefs.theme} data-keys={prefs.keyStyle} onMouseUp={blurAfter}>
       <header className="titlebar">
         <div className="brand">
           <span className="logo" aria-hidden>
@@ -794,6 +808,48 @@ export function App(): React.JSX.Element {
         </div>
 
         <div className="title-actions">
+          <div className="theme-pop-wrap">
+            <button className={`title-btn ${themeMenu ? 'lit' : ''}`} onClick={() => setThemeMenu((v) => !v)} title="ערכות נושא וסגנון קלידים">
+              <Icon name="palette" />
+              <span>עיצוב</span>
+            </button>
+            {themeMenu && (
+              <>
+                <div className="scrim" onClick={() => setThemeMenu(false)} />
+                <div className="theme-popover" role="menu">
+                  <div className="menu-label" style={{ padding: '4px 6px 8px' }}>ערכות נושא</div>
+                  <div className="theme-grid">
+                    {THEMES.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`theme-card ${prefs.theme === t.id ? 'on' : ''}`}
+                        onClick={() => set('theme', t.id)}
+                      >
+                        <span className="theme-swatch" style={{ background: t.bg, borderColor: t.accent }}>
+                          <span style={{ background: t.accent }} />
+                        </span>
+                        <span>{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="menu-label" style={{ padding: '12px 6px 6px' }}>סגנון קלידים</div>
+                  <div className="seg" style={{ width: '100%' }}>
+                    {(
+                      [
+                        ['classic', 'שנהב'],
+                        ['neon', 'ניאון'],
+                        ['wood', 'עץ']
+                      ] as const
+                    ).map(([v, l]) => (
+                      <button key={v} style={{ flex: 1 }} className={prefs.keyStyle === v ? 'on' : ''} onClick={() => set('keyStyle', v)}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
           <button className={`title-btn ${aiJam ? 'lit' : ''}`} onClick={() => setAiOpen(true)} title="מלחין AI ואלתור משותף">
             <Icon name="ai" />
             <span>סטודיו AI</span>
@@ -835,6 +891,32 @@ export function App(): React.JSX.Element {
 
         {/* Live Circle of Fifths Harmonic Wheel */}
         {prefs.showWheel && !song && <HarmonicWheel activeNotes={activeNotes} />}
+
+        {/* Smart Chord Pads */}
+        {prefs.showPads && !song && (
+          <div className="chord-pads">
+            {chordPads.map((cp) => (
+              <button
+                key={cp.symbol}
+                className="chord-pad"
+                onPointerDown={() => {
+                  setPlayed(true)
+                  for (const m of cp.notes) engine.noteOn(m, 0.72)
+                }}
+                onPointerUp={() => {
+                  for (const m of cp.notes) engine.noteOff(m)
+                }}
+                onPointerLeave={() => {
+                  for (const m of cp.notes) engine.noteOff(m)
+                }}
+                title={cp.label}
+              >
+                <b dir="ltr">{cp.symbol}</b>
+                <span>{cp.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Active Scale Pill when scale highlight is enabled */}
         {prefs.scaleId !== 'none' && (
@@ -1340,6 +1422,29 @@ export function App(): React.JSX.Element {
                       {l}
                     </button>
                   ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>סגנון קלידים</span>
+                <div className="seg">
+                  {(
+                    [
+                      ['classic', 'שנהב'],
+                      ['neon', 'ניאון'],
+                      ['wood', 'עץ']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.keyStyle === v ? 'on' : ''} onClick={() => set('keyStyle', v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>פאד אקורדים מהיר</span>
+                <div className="seg">
+                  <button className={prefs.showPads ? 'on' : ''} onClick={() => set('showPads', true)}>מוצג</button>
+                  <button className={!prefs.showPads ? 'on' : ''} onClick={() => set('showPads', false)}>מוסתר</button>
                 </div>
               </div>
               <div className="row">

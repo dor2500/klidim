@@ -44,6 +44,31 @@ export function scalePitchClasses(rootPc: number, scaleId: ScaleId): Set<number>
   return new Set(s.intervals.map((iv) => (rootPc + iv) % 12))
 }
 
+/** Builds 7 diatonic triad chords for the given root (0..11) and major/minor mode. */
+export function buildChordPads(rootPc: number, minor: boolean): { label: string; symbol: string; notes: number[] }[] {
+  const steps = minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11]
+  const quals = minor
+    ? ['', 'dim', '', 'm', 'm', '', '']
+    : ['', 'm', 'm', '', '', 'm', 'dim']
+  const heQuals = minor
+    ? ['מינור', 'מוקטן', 'מז׳ור', 'מינור', 'מינור', 'מז׳ור', 'מז׳ור']
+    : ['מז׳ור', 'מינור', 'מינור', 'מז׳ור', 'מז׳ור', 'מינור', 'מוקטן']
+  const isMin = minor ? [true, true, false, true, true, false, false] : [false, true, true, false, false, true, true]
+  const isDim = minor ? [false, true, false, false, false, false, false] : [false, false, false, false, false, false, true]
+
+  return steps.map((st, i) => {
+    const pc = (rootPc + st) % 12
+    const root = 48 + pc
+    const third = root + (isMin[i] || isDim[i] ? 3 : 4)
+    const fifth = root + (isDim[i] ? 6 : 7)
+    return {
+      label: `${HE_NAMES[pc]} ${heQuals[i]}`,
+      symbol: `${EN_NAMES[pc]}${isMin[i] && !isDim[i] ? 'm' : quals[i]}`,
+      notes: [root, third, fifth]
+    }
+  })
+}
+
 /** Detects a chord from currently held MIDI notes (supports inversions). */
 export function detectChord(midis: number[]): { label: string; symbol: string } | null {
   if (midis.length < 3) return null

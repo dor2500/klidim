@@ -19,11 +19,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.6.0.exe"><b>⬇️ הורדה להתקנה (Windows)</b></a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.7.0.exe"><b>⬇️ הורדה להתקנה (Windows)</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.6.0.exe">גרסה ניידת</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.7.0.exe">גרסה ניידת</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.6.0.apk">📱 אנדרואיד (APK)</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.7.0.apk">📱 אנדרואיד (APK)</a>
 </p>
 
 ![שיר מתנגן עם תווים נופלים](docs/screenshots/playing.png)
@@ -37,7 +37,8 @@
 - 🎚️ **אפקטים וגל קול חי** – הד (ריוורב), השהייה (אקו) עם שלושה זמנים, בהירות הצליל, וספקטרום גל קול חי על הבמה.
 - 🎼 **זיהוי אקורדים והדגשת סולמות** – מציג בזמן אמת את האקורד שאתם מנגנים (כולל היפוכים), ומדגיש סולמות על הקלידים (מז'ור, מינור, פנטטוני, בלוז וחיג'אז).
 - 🥁 **מטרונום, מקצבי תופים וארפג'יאטור** – קליק קלאסי או מקצבי פופ/רוק, בלדה ובוסה נובה, פירוק אקורדים אוטומטי (עולה/יורד/הלוך-חזור), וחזרת קטע A–B.
-- 🎨 **4 ערכות נושא** – אולפן זהב, אורורה, עץ רוזווד ואולם מואר.
+- 🎨 **6 ערכות נושא + 3 סגנונות קלידים** – אולפן זהב, אורורה, עץ רוזווד, ניאון סייבר, אמרלד לילה ואולם מואר, עם קלידי שנהב, ניאון או עץ וינטג׳.
+- 🎹 **פאד אקורדים מהיר + מעגל הקווינטות החי** – 7 אקורדים דיאטוניים בלחיצה אחת ומעגל קווינטות שמאיר את ההרמוניה בזמן אמת.
 - 🎹 **נגינה מהמקלדת של המחשב** – כל שורה במקלדת היא סולם, בדיוק לפי סדר המקשים. Shift מנגן את הקליד השחור.
 - 🎼 **צליל פסנתר אמיתי** – הקלטות של פסנתר כנף (Salamander Grand Piano), עם דוושת הדהוד.
 - 🌧️ **תווים נופלים** – פותחים קובץ MIDI ורואים את התווים יורדים אל הקלידים, עם שמות התווים בעברית וניצוצות פגיעה.
@@ -63,13 +64,13 @@
 
 ## התקנה
 
-1. מורידים את **[Klidim-Setup-0.6.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.6.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
+1. מורידים את **[Klidim-Setup-0.7.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.7.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
 2. מפעילים את הקובץ ובוחרים לאן להתקין.
 3. נוצר קיצור דרך בשולחן העבודה ובתפריט התחל בשם **קלידים**.
 
-**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.6.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
+**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.7.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
 
-**אנדרואיד:** הורידו את [Klidim-0.6.0.apk](https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.6.0.apk) והתקינו במכשיר (תומך במולטי-טאץ׳ מלא).
+**אנדרואיד:** הורידו את [Klidim-0.7.0.apk](https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.7.0.apk) והתקינו במכשיר (תומך במולטי-טאץ׳ מלא).
 
 > [!NOTE]
 > התוכנה לא חתומה דיגיטלית, ולכן ייתכן ש-Windows יציג את המסך "Windows protected your PC". לוחצים על **More info** ואז על **Run anyway**.

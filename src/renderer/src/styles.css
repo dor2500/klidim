@@ -39,6 +39,26 @@
   --accent-soft: rgba(224, 142, 109, 0.18);
 }
 
+.app[data-theme='cyber'] {
+  --bg: #070a10;
+  --bg-2: #0b1019;
+  --panel: rgba(12, 18, 30, 0.86);
+  --panel-solid: #0f1726;
+  --accent: #22d3ee;
+  --accent-2: #67e8f9;
+  --accent-soft: rgba(34, 211, 238, 0.16);
+}
+
+.app[data-theme='forest'] {
+  --bg: #08110e;
+  --bg-2: #0d1a15;
+  --panel: rgba(14, 28, 22, 0.86);
+  --panel-solid: #11221b;
+  --accent: #34d399;
+  --accent-2: #6ee7b7;
+  --accent-soft: rgba(52, 211, 153, 0.16);
+}
+
 .app[data-theme='ivory'] {
   --bg: #ede9df;
   --bg-2: #e3ded1;
@@ -282,6 +302,33 @@ button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; 
   transform: translateY(1.5px);
   background: linear-gradient(180deg, #b45309 0%, #f59e0b 100%);
   box-shadow: inset 0 -2px 0 #78350f, 0 0 14px rgba(245, 158, 11, 0.5);
+}
+
+/* Key styles: Neon & Vintage Wood */
+.app[data-keys='neon'] .key.white {
+  background: linear-gradient(180deg, #131722 0%, #1a2030 86%, #111520 100%);
+  border-inline-start: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 -6px 0 #090b12, inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+}
+.app[data-keys='neon'] .key.white .lbl { color: #7e8aa6; }
+.app[data-keys='neon'] .key.black {
+  background: linear-gradient(180deg, #06080c 0%, #0d111a 100%);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  box-shadow: inset 0 -4px 0 #030407, 0 4px 10px rgba(0, 0, 0, 0.7);
+}
+.app[data-keys='neon'] .key.white.live {
+  background: linear-gradient(180deg, var(--accent) 0%, var(--accent-2) 100%);
+  box-shadow: 0 0 22px var(--accent);
+}
+.app[data-keys='wood'] .key.white {
+  background: linear-gradient(180deg, #efe2ca 0%, #f8eedc 14%, #eadac0 84%, #d9c4a3 100%);
+  border-inline-start: 1px solid #b59d79;
+  box-shadow: inset 0 -7px 0 #c6ae89;
+}
+.app[data-keys='wood'] .key.black {
+  background: linear-gradient(180deg, #2d1b14 0%, #44291e 85%, #543326 100%);
+  border: 1px solid #1e110c;
+  box-shadow: inset 0 -5px 0 #1b0f0a, 0 4px 8px rgba(0, 0, 0, 0.55);
 }
 .key.song {
   transform: translateY(1.5px);
@@ -761,5 +808,29 @@ a.btn { text-decoration: none; }
 .release-assets { display: grid; gap: 6px; margin-top: 8px; }
 .asset-link { display: block; padding: 6px 10px; border-radius: 8px; background: rgba(52, 211, 153, 0.14); color: #a7f3d0; text-decoration: none; font-weight: 600; direction: ltr; text-align: left; }
 .asset-link:hover { background: rgba(52, 211, 153, 0.24); }
+.theme-pop-wrap { position: relative; }
+.theme-popover {
+  position: absolute; top: 36px; inset-inline-end: 0; z-index: 25;
+  width: 280px; padding: 10px; border-radius: 14px;
+  background: var(--panel-solid); border: 1px solid var(--line-2);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  animation: pop 0.15s ease-out;
+}
+.chord-pads {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 6;
+  display: flex; gap: 8px; padding: 8px 12px; border-radius: 14px;
+  background: var(--panel); backdrop-filter: blur(12px);
+  border: 1px solid var(--line-2); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.chord-pad {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 68px; padding: 7px 10px; border-radius: 10px;
+  border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.04);
+  cursor: pointer; transition: transform 0.08s, background 0.12s, border-color 0.12s;
+}
+.chord-pad:hover { background: rgba(255, 255, 255, 0.09); border-color: var(--accent); }
+.chord-pad:active { transform: scale(0.95); background: var(--accent-soft); }
+.chord-pad b { font-size: 14px; color: var(--accent-2); }
+.chord-pad span { font-size: 10.5px; color: var(--text-3); }
 
 /* AI Studio & Updates modal */
