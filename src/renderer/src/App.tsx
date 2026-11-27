@@ -24,14 +24,17 @@ import { Icon } from './icons'
 import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle } from './ai'
 import { HarmonicWheel } from './HarmonicWheel'
 
-const APP_VERSION = '0.5.0'
+const APP_VERSION = '0.6.0'
 
+type ReleaseAsset = { name: string; url: string; size: number }
 type UpdateState = {
   checking: boolean
   latest: string | null
   hasUpdate: boolean
   url: string
   notes: string
+  assets: ReleaseAsset[]
+  checkedAt: string | null
   error: string | null
 }
 
@@ -66,6 +69,8 @@ type Prefs = Effects & {
   visualizer: boolean
   visualMode: VisualMode
   showWheel: boolean
+  tuningHz: 432 | 440 | 442
+  autoCheckUpdates: boolean
   theme: ThemeId
 }
 
@@ -83,7 +88,7 @@ const GROOVES: { id: GrooveId; name: string }[] = [
   { id: 'bossa', name: 'בוסה נובה' }
 ]
 
-const DEFAULT_FX: Effects = { reverb: 0.27, delay: 0, delayTime: 0.25, brightness: 1 }
+const DEFAULT_FX: Effects = { reverb: 0.27, delay: 0, delayTime: 0.25, brightness: 1, eqLow: 0, eqMid: 0, eqHigh: 0 }
 const DEFAULTS: Prefs = {
   volume: 0.8,
   octave: 0,
@@ -102,6 +107,8 @@ const DEFAULTS: Prefs = {
   visualizer: true,
   visualMode: 'galaxy',
   showWheel: false,
+  tuningHz: 440,
+  autoCheckUpdates: true,
   theme: 'brass',
   ...DEFAULT_FX
 }
@@ -133,7 +140,15 @@ function saveRecordings(list: Song[]): void {
   }
 }
 
-const fxOf = (p: Prefs): Effects => ({ reverb: p.reverb, delay: p.delay, delayTime: p.delayTime, brightness: p.brightness })
+const fxOf = (p: Prefs): Effects => ({
+  reverb: p.reverb,
+  delay: p.delay,
+  delayTime: p.delayTime,
+  brightness: p.brightness,
+  eqLow: p.eqLow ?? 0,
+  eqMid: p.eqMid ?? 0,
+  eqHigh: p.eqHigh ?? 0
+})
 
 type Teacher = { text: string; tone: 'info' | 'good' | 'bad' }
 const PRAISE = ['יופי!', 'מצוין!', 'כל הכבוד!', 'נהדר!', 'בדיוק ככה!', 'איזה כישרון!']
@@ -169,6 +184,8 @@ export function App(): React.JSX.Element {
     hasUpdate: false,
     url: 'https://github.com/dor2500/klidim/releases/latest',
     notes: '',
+    assets: [],
+    checkedAt: null,
     error: null
   })
   const [played, setPlayed] = useState(false)
@@ -200,18 +217,31 @@ export function App(): React.JSX.Element {
         headers: { Accept: 'application/vnd.github+json' }
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = (await res.json()) as { tag_name?: string; html_url?: string; body?: string }
+      const data = (await res.json()) as {
+        tag_name?: string
+        html_url?: string
+        body?: string
+        assets?: { name: string; browser_download_url: string; size: number }[]
+      }
       const latest = (data.tag_name || '').replace(/^v/i, '')
       const hasUpdate = Boolean(latest && isNewerVersion(latest, APP_VERSION))
+      const assets: ReleaseAsset[] = (data.assets || []).map((a) => ({
+        name: a.name,
+        url: a.browser_download_url,
+        size: a.size
+      }))
+      const nowStr = new Date().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
       setUpdateState({
         checking: false,
         latest: latest || APP_VERSION,
         hasUpdate,
         url: data.html_url || 'https://github.com/dor2500/klidim/releases/latest',
         notes: data.body || '',
+        assets,
+        checkedAt: nowStr,
         error: null
       })
-      if (!silent && hasUpdate) say(`נמצאה גרסה חדשה: ${latest}!`)
+      if (!silent) say(hasUpdate ? `נמצאה גרסה חדשה: ${latest}!` : `התוכנה מעודכנת (v${APP_VERSION})`)
     } catch {
       setUpdateState((u) => ({
         ...u,
@@ -222,7 +252,7 @@ export function App(): React.JSX.Element {
   }, [say])
 
   useEffect(() => {
-    void checkUpdates(true)
+    if (loadPrefs().autoCheckUpdates) void checkUpdates(true)
   }, [checkUpdates])
 
   useEffect(() => {
@@ -237,6 +267,7 @@ export function App(): React.JSX.Element {
     engine.setGroove(prefs.groove)
     engine.setArp(arpOn, prefs.arpMode)
     engine.harmonize = prefs.harmonize
+    engine.tuningHz = prefs.tuningHz
   }, [prefs, arpOn])
 
   useEffect(() => {
@@ -652,6 +683,22 @@ export function App(): React.JSX.Element {
     say(`נוצרה יצירה חדשה: ${s.name}`)
   }
 
+  // ---------- tap tempo ----------
+  const tapTimes = useRef<number[]>([])
+  const tapTempo = (): void => {
+    const now = performance.now()
+    const recent = tapTimes.current.filter((t) => now - t < 2000)
+    recent.push(now)
+    tapTimes.current = recent
+    if (recent.length >= 2) {
+      const intervals: number[] = []
+      for (let i = 1; i < recent.length; i++) intervals.push(recent[i] - recent[i - 1])
+      const avgMs = intervals.reduce((a, b) => a + b, 0) / intervals.length
+      const nextBpm = Math.max(40, Math.min(220, Math.round(60000 / avgMs)))
+      set('bpm', nextBpm)
+    }
+  }
+
   const setOct = (d: number): void => setPrefs((p) => ({ ...p, octave: Math.max(-2, Math.min(2, p.octave + d)) }))
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]): void => setPrefs((p) => ({ ...p, [k]: v }))
   const blurAfter = (e: React.MouseEvent): void => (e.currentTarget as HTMLElement).blur()
@@ -1000,6 +1047,9 @@ export function App(): React.JSX.Element {
               <button onClick={() => set('bpm', Math.max(40, prefs.bpm - 5))} aria-label="האט מטרונום">−</button>
               <button onClick={() => set('bpm', Math.min(220, prefs.bpm + 5))} aria-label="האץ מטרונום">+</button>
             </div>
+            <button className="ab-btn" onClick={tapTempo} title="הקישו בקצב כדי לזהות BPM (Tap Tempo)">
+              Tap
+            </button>
           </div>
           <button className={`pedal ${arpOn ? 'on' : ''}`} onClick={toggleArp} title="ארפג׳יאטור – מפרק אקורדים אוטומטית לפי הקצב">
             <Icon name="arp" /> ארפג׳יו
@@ -1132,6 +1182,60 @@ export function App(): React.JSX.Element {
                 </div>
               </div>
               <Slider label="בהירות" hint="שמאלה: צליל רך ועמום. ימינה: צליל חד" value={prefs.brightness} onChange={(v) => set('brightness', v)} />
+              <div className="eq-grid">
+                <label className="eq-band">
+                  <span>בס</span>
+                  <input
+                    type="range"
+                    dir="ltr"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={prefs.eqLow ?? 0}
+                    onChange={(e) => set('eqLow', Number(e.target.value))}
+                    style={{ ['--p' as string]: `${(((prefs.eqLow ?? 0) + 12) / 24) * 100}%` }}
+                  />
+                  <b>{(prefs.eqLow ?? 0) > 0 ? `+${prefs.eqLow}` : prefs.eqLow ?? 0}dB</b>
+                </label>
+                <label className="eq-band">
+                  <span>אמצע</span>
+                  <input
+                    type="range"
+                    dir="ltr"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={prefs.eqMid ?? 0}
+                    onChange={(e) => set('eqMid', Number(e.target.value))}
+                    style={{ ['--p' as string]: `${(((prefs.eqMid ?? 0) + 12) / 24) * 100}%` }}
+                  />
+                  <b>{(prefs.eqMid ?? 0) > 0 ? `+${prefs.eqMid}` : prefs.eqMid ?? 0}dB</b>
+                </label>
+                <label className="eq-band">
+                  <span>טרבל</span>
+                  <input
+                    type="range"
+                    dir="ltr"
+                    min={-12}
+                    max={12}
+                    step={1}
+                    value={prefs.eqHigh ?? 0}
+                    onChange={(e) => set('eqHigh', Number(e.target.value))}
+                    style={{ ['--p' as string]: `${(((prefs.eqHigh ?? 0) + 12) / 24) * 100}%` }}
+                  />
+                  <b>{(prefs.eqHigh ?? 0) > 0 ? `+${prefs.eqHigh}` : prefs.eqHigh ?? 0}dB</b>
+                </label>
+              </div>
+              <div className="row">
+                <span>תדר כוונון (A4)</span>
+                <div className="seg">
+                  {([432, 440, 442] as const).map((hz) => (
+                    <button key={hz} className={prefs.tuningHz === hz ? 'on' : ''} onClick={() => set('tuningHz', hz)}>
+                      {hz}Hz
+                    </button>
+                  ))}
+                </div>
+              </div>
             </section>
 
             <section>
@@ -1251,6 +1355,53 @@ export function App(): React.JSX.Element {
                   <button className={prefs.visualizer ? 'on' : ''} onClick={() => set('visualizer', true)}>פעיל</button>
                   <button className={!prefs.visualizer ? 'on' : ''} onClick={() => set('visualizer', false)}>כבוי</button>
                 </div>
+              </div>
+            </section>
+
+            <section>
+              <h3><Icon name="update" /> עדכונים וגרסה (GitHub Releases)</h3>
+              <div className="update-drawer-card">
+                <div className="row" style={{ marginBottom: 8 }}>
+                  <span>גרסה נוכחית</span>
+                  <b dir="ltr">v{APP_VERSION}</b>
+                </div>
+                <div className="row" style={{ marginBottom: 10 }}>
+                  <span>בדיקה אוטומטית בהפעלה</span>
+                  <div className="seg">
+                    <button className={prefs.autoCheckUpdates ? 'on' : ''} onClick={() => set('autoCheckUpdates', true)}>פעיל</button>
+                    <button className={!prefs.autoCheckUpdates ? 'on' : ''} onClick={() => set('autoCheckUpdates', false)}>כבוי</button>
+                  </div>
+                </div>
+                <button
+                  className="btn primary"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                  onClick={() => void checkUpdates(false)}
+                  disabled={updateState.checking}
+                >
+                  <Icon name="update" /> {updateState.checking ? 'בודק מול GitHub Releases…' : 'בדוק עדכונים עכשיו'}
+                </button>
+                {updateState.error && <p className="err-text" style={{ margin: '8px 0 0', fontSize: 12.5 }}>{updateState.error}</p>}
+                {!updateState.checking && !updateState.error && updateState.latest && (
+                  <div className={`update-box ${updateState.hasUpdate ? 'new' : ''}`} style={{ marginTop: 10, padding: 10, fontSize: 12.5 }}>
+                    {updateState.hasUpdate ? (
+                      <>
+                        <b>נמצאה גרסה חדשה: v{updateState.latest}!</b>
+                        <div className="release-assets">
+                          {updateState.assets.slice(0, 3).map((a) => (
+                            <a key={a.name} className="asset-link" href={a.url} target="_blank" rel="noreferrer">
+                              ⬇ {a.name}
+                            </a>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <span>
+                        התוכנה מעודכנת (גרסה אחרונה ב-Releases: <bdi dir="ltr">v{updateState.latest}</bdi>)
+                        {updateState.checkedAt ? ` · נבדק ב-${updateState.checkedAt}` : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </section>
 

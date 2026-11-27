@@ -1,7 +1,7 @@
 {
   "name": "klidim",
   "productName": "Klidim",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "פסנתר במחשב בעברית: נגינה במקלדת, הקלטה, שירי MIDI ומקלדת MIDI",
   "private": true,
   "main": "out/main/index.js",

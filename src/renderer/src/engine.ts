@@ -19,7 +19,15 @@ type Voice = {
   releaseAll(time?: number): unknown
 }
 
-export type Effects = { reverb: number; delay: number; delayTime: number; brightness: number }
+export type Effects = {
+  reverb: number
+  delay: number
+  delayTime: number
+  brightness: number
+  eqLow?: number
+  eqMid?: number
+  eqHigh?: number
+}
 export type GrooveId = 'click' | 'pop' | 'ballad' | 'bossa'
 export type ArpMode = 'up' | 'down' | 'updown'
 export type HarmonizeMode = 'off' | 'octave' | 'fifth' | 'triad'
@@ -42,12 +50,19 @@ class Engine {
   layerMix = 0.55
   private layerVoice: Voice | null = null
   private input!: Tone.Gain
+  private eq!: Tone.EQ3
   private filter!: Tone.Filter
   private delay!: Tone.FeedbackDelay
   private reverb!: Tone.Reverb
   private out!: Tone.Volume
   private analyser: Tone.Analyser | null = null
+  tuningHz: 432 | 440 | 442 = 440
   ready = false
+
+  private pitch(m: number): string | number {
+    if (this.tuningHz === 440) return toNoteName(m)
+    return 440 * Math.pow(2, (m - 69) / 12) * (this.tuningHz / 440)
+  }
 
   // live playing
   private held = new Set<number>()
@@ -126,8 +141,9 @@ class Engine {
     await this.reverb.generate()
     this.delay = new Tone.FeedbackDelay({ delayTime: 0.25, feedback: 0.3 })
     this.filter = new Tone.Filter({ type: 'lowpass', frequency: 20000, rolloff: -12 })
+    this.eq = new Tone.EQ3({ low: 0, mid: 0, high: 0 })
     this.input = new Tone.Gain(1)
-    this.input.chain(this.filter, this.delay, this.reverb, this.out)
+    this.input.chain(this.eq, this.filter, this.delay, this.reverb, this.out)
     this.setEffects(fx)
 
     const base = new URL('samples/', document.baseURI).href
@@ -228,6 +244,11 @@ class Engine {
     this.delay.feedback.rampTo(0.15 + fx.delay * 0.4, 0.05)
     this.delay.delayTime.rampTo(fx.delayTime, 0.05)
     this.filter.frequency.rampTo(600 * Math.pow(2, fx.brightness * 5.1), 0.05)
+    if (this.eq) {
+      this.eq.low.rampTo(fx.eqLow ?? 0, 0.05)
+      this.eq.mid.rampTo(fx.eqMid ?? 0, 0.05)
+      this.eq.high.rampTo(fx.eqHigh ?? 0, 0.05)
+    }
   }
 
   // ---------------- live ----------------
@@ -268,9 +289,9 @@ class Engine {
     if (this.sounding.has(m)) this.release(m)
     this.held.add(m)
     this.sounding.add(m)
-    this.voice.triggerAttack(toNoteName(m), Tone.now(), velocity)
+    this.voice.triggerAttack(this.pitch(m) as never, Tone.now(), velocity)
     if (this.layerVoice && this.layerInstrument !== 'none' && this.layerInstrument !== this.instrument) {
-      this.layerVoice.triggerAttack(toNoteName(m), Tone.now(), velocity * this.layerMix)
+      this.layerVoice.triggerAttack(this.pitch(m) as never, Tone.now(), velocity * this.layerMix)
     }
     if (this.recording) this.recOpen.set(m, { t: wall() - this.recStart, v: velocity })
     if (this.loopRec) this.loopOpen.set(m, { t: wall() - this.loopStart, v: velocity })
@@ -298,9 +319,9 @@ class Engine {
   private release(m: number): void {
     if (!this.sounding.delete(m)) return
     const t = Tone.now()
-    this.voice?.triggerRelease(toNoteName(m), t)
+    this.voice?.triggerRelease(this.pitch(m) as never, t)
     if (this.layerVoice && this.layerInstrument !== 'none' && this.layerInstrument !== this.instrument) {
-      this.layerVoice.triggerRelease(toNoteName(m), t)
+      this.layerVoice.triggerRelease(this.pitch(m) as never, t)
     }
     const open = this.recOpen.get(m)
     if (this.recording && open) {
@@ -624,7 +645,7 @@ class Engine {
       if (this.waiting) at = now
       if (at < now - 0.05) continue
       at = Math.max(at, now)
-      this.voice.triggerAttackRelease(toNoteName(n.midi), n.duration / this.speed, at, n.velocity)
+      this.voice.triggerAttackRelease(this.pitch(n.midi) as never, n.duration / this.speed, at, n.velocity)
     }
 
     if (this.loop && !this.learn && this.loopA !== null && this.loopB !== null && this.loopB > this.loopA + 0.2 && this.time >= this.loopB) {

@@ -754,5 +754,12 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 6
 }
 .err-text { color: var(--rec); }
 a.btn { text-decoration: none; }
+.eq-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 4px 0 14px; }
+.eq-band { display: grid; gap: 6px; padding: 9px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); text-align: center; font-size: 12px; }
+.eq-band b { color: var(--accent-2); font-variant-numeric: tabular-nums; direction: ltr; }
+.update-drawer-card { padding: 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line-2); }
+.release-assets { display: grid; gap: 6px; margin-top: 8px; }
+.asset-link { display: block; padding: 6px 10px; border-radius: 8px; background: rgba(52, 211, 153, 0.14); color: #a7f3d0; text-decoration: none; font-weight: 600; direction: ltr; text-align: left; }
+.asset-link:hover { background: rgba(52, 211, 153, 0.24); }
 
 /* AI Studio & Updates modal */
