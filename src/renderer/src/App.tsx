@@ -26,7 +26,7 @@ import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle }
 import { HarmonicWheel } from './HarmonicWheel'
 import { pickAudioFile, songFromAudio } from './audioToMidi'
 
-const APP_VERSION = '0.9.0'
+const APP_VERSION = '1.0.0'
 
 type DesktopApi = {
   isPortable?: boolean
@@ -145,7 +145,9 @@ const REC_KEY = 'klidim-recordings'
 
 function loadPrefs(): Prefs {
   try {
-    return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
+    const parsed = { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
+    if (parsed.instrument === 'custom') parsed.instrument = 'piano'
+    return parsed
   } catch {
     return DEFAULTS
   }
@@ -225,6 +227,9 @@ export function App(): React.JSX.Element {
   const [beat, setBeat] = useState<number | null>(null)
   const [arpOn, setArpOn] = useState(false)
   const [liveLoop, setLiveLoop] = useState<'idle' | 'rec' | 'play'>('idle')
+  const [customSample, setCustomSample] = useState<string | null>(null)
+  const [micRec, setMicRec] = useState(false)
+  const micRecorder = useRef<MediaRecorder | null>(null)
   // teacher
   const [learn, setLearn] = useState(false)
   const [mine, setMine] = useState<number[]>([0])
@@ -769,6 +774,55 @@ export function App(): React.JSX.Element {
     }
   }
 
+  const toggleMicSample = async (): Promise<void> => {
+    if (micRec && micRecorder.current) {
+      micRecorder.current.stop()
+      setMicRec(false)
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const chunks: BlobPart[] = []
+      const rec = new MediaRecorder(stream)
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunks.push(ev.data)
+      }
+      rec.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' })
+        try {
+          const buf = await blob.arrayBuffer()
+          await engine.setCustomSample('הקלטה מהמיקרופון', buf)
+          setCustomSample('הקלטה מהמיקרופון')
+          set('instrument', 'custom')
+          say('ההקלטה נטענה! נגנו אותה עכשיו על כל הקלידים')
+        } catch {
+          say('לא הצלחתי לעבד את ההקלטה')
+        }
+      }
+      micRecorder.current = rec
+      rec.start()
+      setMicRec(true)
+      say('מקליט מהמיקרופון… שירו או השמיעו צליל ולחצו שוב לעצירה')
+    } catch {
+      say('אין גישה למיקרופון במכשיר')
+    }
+  }
+
+  const uploadCustomSample = async (): Promise<void> => {
+    const f = await pickAudioFile()
+    if (!f) return
+    try {
+      const clean = f.name.replace(/\.(mp3|wav|ogg|m4a|flac|aac)$/i, '')
+      await engine.setCustomSample(clean, f.data)
+      setCustomSample(clean)
+      set('instrument', 'custom')
+      say(`נטען סמפלר אישי: ${clean}`)
+    } catch {
+      say('לא הצלחתי לטעון את קובץ ההקלטה')
+    }
+  }
+
   const setOct = (d: number): void => setPrefs((p) => ({ ...p, octave: Math.max(-2, Math.min(2, p.octave + d)) }))
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]): void => setPrefs((p) => ({ ...p, [k]: v }))
   const blurAfter = (e: React.MouseEvent): void => (e.currentTarget as HTMLElement).blur()
@@ -1160,8 +1214,8 @@ export function App(): React.JSX.Element {
 
         <div className="group center-controls">
           <button className="inst-chip" onClick={() => setSettings(true)} title="החלפת כלי נגינה ושכבות">
-            <span className="emoji" aria-hidden>{inst.emoji}</span>
-            <span>{inst.name}{layerInst ? ` + ${layerInst.name}` : ''}</span>
+            <span className="emoji" aria-hidden>{prefs.instrument === 'custom' ? '🎙️' : inst.emoji}</span>
+            <span>{prefs.instrument === 'custom' ? (customSample || 'סמפלר אישי') : inst.name}{layerInst ? ` + ${layerInst.name}` : ''}</span>
           </button>
           <label className="ctl">
             <span>אוקטבה</span>
@@ -1275,6 +1329,28 @@ export function App(): React.JSX.Element {
                     <span className="inst-hint">{i.hint}</span>
                   </button>
                 ))}
+              </div>
+              <div className={`sampler-card ${prefs.instrument === 'custom' ? 'on' : ''}`}>
+                <div className="sampler-head">
+                  <b>🎙️ סמפלר אישי (הקלטה של מישהו)</b>
+                  <span>{customSample ? `נטען: ${customSample}` : 'העלו הקלטה או הקליטו במיקרופון ונגנו אותה על כל הקלידים'}</span>
+                </div>
+                <div className="sampler-actions">
+                  {customSample && (
+                    <button
+                      className={`btn ${prefs.instrument === 'custom' ? 'primary' : ''}`}
+                      onClick={() => set('instrument', 'custom')}
+                    >
+                      נגן סמפלר
+                    </button>
+                  )}
+                  <button className="btn" onClick={() => void uploadCustomSample()}>
+                    <Icon name="folder" /> העלה הקלטה
+                  </button>
+                  <button className={`btn ${micRec ? 'primary' : ''}`} onClick={() => void toggleMicSample()}>
+                    <Icon name="mic" /> {micRec ? 'עצור ושמור' : 'הקלט ממיקרופון'}
+                  </button>
+                </div>
               </div>
             </section>
 

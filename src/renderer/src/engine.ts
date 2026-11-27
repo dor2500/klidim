@@ -46,6 +46,7 @@ class Engine {
   private voices = new Map<InstrumentId, Voice>()
   private voice: Voice | null = null
   instrument: InstrumentId = 'piano'
+  customSampleName: string | null = null
   layerInstrument: InstrumentId | 'none' = 'none'
   layerMix = 0.55
   private layerVoice: Voice | null = null
@@ -218,6 +219,53 @@ class Engine {
     this.sounding.clear()
     this.voice = v
     this.instrument = id
+  }
+
+  /** Loads any user audio recording (MP3/WAV/Mic) into a pitched 88-key sampler. */
+  async setCustomSample(name: string, data: ArrayBuffer): Promise<void> {
+    await this.resume()
+    const rawCtx = Tone.getContext().rawContext as AudioContext
+    const decoded = await rawCtx.decodeAudioData(data.slice(0))
+    const sr = decoded.sampleRate
+    const ch0 = decoded.getChannelData(0)
+
+    // Trim leading silence so keys respond instantaneously
+    let start = 0
+    for (let i = 0; i < ch0.length; i++) {
+      if (Math.abs(ch0[i]) > 0.015) {
+        start = Math.max(0, i - Math.round(sr * 0.005))
+        break
+      }
+    }
+    const maxLen = Math.min(ch0.length - start, sr * 4)
+    const trimmedLen = Math.max(Math.round(sr * 0.15), maxLen)
+    const trimmed = rawCtx.createBuffer(decoded.numberOfChannels, trimmedLen, sr)
+    const fadeSamples = Math.min(Math.round(sr * 0.04), trimmedLen)
+    for (let c = 0; c < decoded.numberOfChannels; c++) {
+      const src = decoded.getChannelData(c)
+      const dst = trimmed.getChannelData(c)
+      for (let i = 0; i < trimmedLen; i++) {
+        const s = start + i < src.length ? src[start + i] : 0
+        const fade = i > trimmedLen - fadeSamples ? (trimmedLen - i) / fadeSamples : 1
+        dst[i] = s * fade
+      }
+    }
+
+    const toneBuf = new Tone.ToneAudioBuffer(trimmed)
+    const sampler = await new Promise<Tone.Sampler>((resolve) => {
+      const s: Tone.Sampler = new Tone.Sampler({
+        urls: { C4: toneBuf },
+        release: 0.45,
+        onload: () => resolve(s)
+      })
+    })
+    sampler.connect(this.input)
+    this.voices.set('custom', sampler)
+    this.customSampleName = name
+    this.voice?.releaseAll(Tone.now())
+    this.sounding.clear()
+    this.voice = sampler
+    this.instrument = 'custom'
   }
 
   setLayer(id: InstrumentId | 'none', mix = this.layerMix): void {

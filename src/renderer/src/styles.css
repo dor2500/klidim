@@ -808,6 +808,21 @@ a.btn { text-decoration: none; }
 .release-assets { display: grid; gap: 6px; margin-top: 8px; }
 .asset-link { display: block; padding: 6px 10px; border-radius: 8px; background: rgba(52, 211, 153, 0.14); color: #a7f3d0; text-decoration: none; font-weight: 600; direction: ltr; text-align: left; }
 .asset-link:hover { background: rgba(52, 211, 153, 0.24); }
+.sampler-card {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line-2);
+  display: grid;
+  gap: 10px;
+}
+.sampler-card.on { border-color: var(--accent); background: var(--accent-soft); }
+.sampler-head { display: grid; gap: 3px; }
+.sampler-head b { font-size: 13.5px; }
+.sampler-head span { font-size: 12px; color: var(--text-3); }
+.sampler-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.sampler-actions .btn { height: 32px; padding: 0 11px; font-size: 12.5px; }
 .theme-pop-wrap { position: relative; }
 .theme-popover {
   position: absolute; top: 36px; inset-inline-end: 0; z-index: 25;

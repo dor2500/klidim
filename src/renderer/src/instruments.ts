@@ -13,6 +13,11 @@ export type InstrumentId =
   | 'pad'
   | 'marimba'
   | 'bass'
+  | 'acoustic'
+  | 'brass'
+  | 'flute'
+  | 'choir'
+  | 'custom'
 
 type Made = {
   output: Tone.ToneAudioNode
@@ -153,5 +158,53 @@ export const INSTRUMENTS: Instrument[] = [
         oscillator: { type: 'sawtooth' },
         envelope: { attack: 0.01, decay: 0.35, sustain: 0.55, release: 0.28 }
       }, -16, new Tone.Filter({ type: 'lowpass', frequency: 680, rolloff: -24, Q: 2.5 }))
+  },
+  {
+    id: 'acoustic',
+    name: 'גיטרה אקוסטית',
+    hint: 'פריטה חמה של מיתרי ניילון',
+    emoji: '🪕',
+    create: () =>
+      poly(Tone.FMSynth, {
+        harmonicity: 2,
+        modulationIndex: 4.2,
+        oscillator: { type: 'triangle' },
+        envelope: { attack: 0.002, decay: 1.4, sustain: 0.05, release: 0.5 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.002, decay: 0.25, sustain: 0, release: 0.15 }
+      }, -10, new Tone.Filter({ type: 'lowpass', frequency: 2800 }))
+  },
+  {
+    id: 'brass',
+    name: 'כלי נשיפה',
+    hint: 'סקציית חצוצרות וקרנות חמה',
+    emoji: '🎺',
+    create: () =>
+      poly(Tone.Synth, {
+        oscillator: { type: 'sawtooth' },
+        envelope: { attack: 0.08, decay: 0.25, sustain: 0.72, release: 0.35 }
+      }, -17, new Tone.Filter({ type: 'lowpass', frequency: 2200, rolloff: -24, Q: 1.8 }))
+  },
+  {
+    id: 'flute',
+    name: 'חליל צד',
+    hint: 'צליל אוורירי ועדין עם ויברטו',
+    emoji: '🪈',
+    create: () =>
+      poly(Tone.Synth, {
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.09, decay: 0.15, sustain: 0.85, release: 0.4 }
+      }, -10, new Tone.Vibrato({ frequency: 5.2, depth: 0.12 }))
+  },
+  {
+    id: 'choir',
+    name: 'מקהלה',
+    hint: 'קולות אנסמבל עשירים ומלאים',
+    emoji: '🎤',
+    create: () =>
+      poly(Tone.Synth, {
+        oscillator: { type: 'fatsawtooth', count: 3, spread: 28 },
+        envelope: { attack: 0.35, decay: 0.4, sustain: 0.9, release: 1.6 }
+      }, -20, new Tone.Filter({ type: 'bandpass', frequency: 950, Q: 1.2 }), new Tone.Chorus({ frequency: 0.7, delayTime: 4, depth: 0.5, wet: 0.4 }).start())
   }
 ]
