@@ -204,6 +204,23 @@ button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; 
 .stage { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .falls { flex: 1; width: 100%; min-height: 0; display: block; }
 
+.fallboard {
+  height: 20px;
+  margin: 0 10px;
+  background: linear-gradient(180deg, #171922 0%, #0e1016 100%);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fallboard-plate {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  color: rgba(245, 196, 105, 0.65);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
 .keybed-felt {
   height: 5px;
   margin: 0 10px;
@@ -212,10 +229,25 @@ button:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; 
   box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.55);
 }
 
+.piano-chassis {
+  display: flex;
+  align-items: stretch;
+  margin: 0 10px;
+  background: #08090c;
+  border-radius: 0 0 10px 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.cheek {
+  width: 12px;
+  flex: none;
+  background: linear-gradient(90deg, #1e1612 0%, #2d201a 50%, #16100d 100%);
+  border-inline: 1px solid rgba(255, 255, 255, 0.05);
+}
 .piano {
   position: relative;
-  height: clamp(134px, 23vh, 232px);
-  margin: 0 10px;
+  flex: 1;
+  height: clamp(128px, 23vh, 228px);
   background: #08090c;
   touch-action: none;
 }
@@ -668,7 +700,33 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 6
 .seg button:disabled { opacity: 0.35; cursor: default; }
 .reset { margin-top: 16px; width: 100%; justify-content: center; color: var(--text-2); }
 
-/* AI Studio & Updates modal */
+.wheel-hud {
+  position: absolute;
+  top: 16px;
+  inset-inline-start: 20px;
+  z-index: 6;
+  padding: 6px;
+  border-radius: 50%;
+  background: var(--panel);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(229, 169, 60, 0.25);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.pedal.rec-loop {
+  background: rgba(251, 113, 133, 0.18);
+  border-color: var(--rec);
+  color: #fda4af;
+}
+
+@media (max-width: 920px) {
+  .titlebar { gap: 8px; padding-inline: 10px; }
+  .picker { min-width: 170px; }
+  .chip { display: none; }
+  .controls { padding: 8px 10px; gap: 8px; overflow-x: auto; }
+  .vol { display: none; }
+  .piano { height: clamp(110px, 34vh, 180px); }
+  .cheek { width: 6px; }
+}
 .ai-modal { width: min(580px, calc(100% - 32px)); }
 .modal h2 { display: flex; align-items: center; gap: 8px; }
 .modal h2 .ic { color: var(--accent-2); }
@@ -696,3 +754,5 @@ kbd { display: inline-block; min-width: 22px; padding: 1px 6px; border-radius: 6
 }
 .err-text { color: var(--rec); }
 a.btn { text-decoration: none; }
+
+/* AI Studio & Updates modal */

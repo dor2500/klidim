@@ -1,7 +1,7 @@
 {
   "name": "klidim",
   "productName": "Klidim",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "פסנתר במחשב בעברית: נגינה במקלדת, הקלטה, שירי MIDI ומקלדת MIDI",
   "private": true,
   "main": "out/main/index.js",
@@ -41,6 +41,7 @@
     }
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.3",
     "@fontsource-variable/rubik": "^5.3.0",
     "@tonejs/midi": "^2.0.28",
     "react": "^19.3.1",
@@ -48,6 +49,8 @@
     "tone": "^15.1.22"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.3",
+    "@capacitor/cli": "^8.6.3",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

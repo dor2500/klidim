@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { engine, type ArpMode, type Effects, type GrooveId, type LessonStats, type TeachEvent } from './engine'
+import { engine, type ArpMode, type Effects, type GrooveId, type HarmonizeMode, type LessonStats, type TeachEvent } from './engine'
 import { INSTRUMENTS, type InstrumentId } from './instruments'
 import { LESSONS, loadProgress, saveStars, starsFor, type Lesson } from './lessons'
 import { connectMidiInputs, pickMidi, saveSong, songFromMidi } from './midi'
@@ -19,11 +19,12 @@ import {
   type Song
 } from './music'
 import { BUILTIN } from './songs'
-import { Stage, TRACK_COLORS } from './Stage'
+import { Stage, TRACK_COLORS, type VisualMode } from './Stage'
 import { Icon } from './icons'
 import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle } from './ai'
+import { HarmonicWheel } from './HarmonicWheel'
 
-const APP_VERSION = '0.4.0'
+const APP_VERSION = '0.5.0'
 
 type UpdateState = {
   checking: boolean
@@ -58,10 +59,13 @@ type Prefs = Effects & {
   bpm: number
   groove: GrooveId
   arpMode: ArpMode
+  harmonize: HarmonizeMode
   scaleId: ScaleId
   scaleRoot: number
   showNoteNames: boolean
   visualizer: boolean
+  visualMode: VisualMode
+  showWheel: boolean
   theme: ThemeId
 }
 
@@ -91,10 +95,13 @@ const DEFAULTS: Prefs = {
   bpm: 100,
   groove: 'click',
   arpMode: 'up',
+  harmonize: 'off',
   scaleId: 'none',
   scaleRoot: 0,
   showNoteNames: true,
   visualizer: true,
+  visualMode: 'galaxy',
+  showWheel: false,
   theme: 'brass',
   ...DEFAULT_FX
 }
@@ -170,6 +177,7 @@ export function App(): React.JSX.Element {
   const [metroOn, setMetroOn] = useState(false)
   const [beat, setBeat] = useState<number | null>(null)
   const [arpOn, setArpOn] = useState(false)
+  const [liveLoop, setLiveLoop] = useState<'idle' | 'rec' | 'play'>('idle')
   // teacher
   const [learn, setLearn] = useState(false)
   const [mine, setMine] = useState<number[]>([0])
@@ -228,6 +236,7 @@ export function App(): React.JSX.Element {
     engine.setBpm(prefs.bpm)
     engine.setGroove(prefs.groove)
     engine.setArp(arpOn, prefs.arpMode)
+    engine.harmonize = prefs.harmonize
   }, [prefs, arpOn])
 
   useEffect(() => {
@@ -248,6 +257,7 @@ export function App(): React.JSX.Element {
       })
       .catch(() => setStatus('error'))
     engine.onSongEnd = () => setPlaying(false)
+    engine.onLoopState = () => setLiveLoop(engine.loopRec ? 'rec' : engine.loopPlaying ? 'play' : 'idle')
     engine.onBeat = (b) => {
       setBeat(b)
       window.setTimeout(() => setBeat((cur) => (cur === b ? null : cur)), 140)
@@ -776,6 +786,9 @@ export function App(): React.JSX.Element {
           </div>
         )}
 
+        {/* Live Circle of Fifths Harmonic Wheel */}
+        {prefs.showWheel && !song && <HarmonicWheel activeNotes={activeNotes} />}
+
         {/* Active Scale Pill when scale highlight is enabled */}
         {prefs.scaleId !== 'none' && (
           <button className="scale-hud" onClick={() => setSettings(true)} title="הדגשת סולם פעילה – לחצו לשינוי">
@@ -939,8 +952,10 @@ export function App(): React.JSX.Element {
           labels={prefs.labels}
           showNoteNames={prefs.showNoteNames}
           visualizer={prefs.visualizer}
+          visualMode={prefs.visualMode}
           scaleNotes={scaleNotes}
           scaleRoot={prefs.scaleRoot}
+          onPlayNote={() => setPlayed(true)}
         />
       </main>
 
@@ -988,6 +1003,13 @@ export function App(): React.JSX.Element {
           </div>
           <button className={`pedal ${arpOn ? 'on' : ''}`} onClick={toggleArp} title="ארפג׳יאטור – מפרק אקורדים אוטומטית לפי הקצב">
             <Icon name="arp" /> ארפג׳יו
+          </button>
+          <button
+            className={`pedal ${liveLoop === 'rec' ? 'rec-loop' : liveLoop === 'play' ? 'on' : ''}`}
+            onClick={() => engine.toggleLiveLoop()}
+            title="לופר חי: הקליטו משפט מוזיקלי ונגנו עליו שכבות"
+          >
+            <Icon name="loop" /> {liveLoop === 'rec' ? 'מקליט לופ…' : liveLoop === 'play' ? 'לופ פעיל (נקה)' : 'לופר חי'}
           </button>
           <button
             className={`pedal ${sustain ? 'on' : ''}`}
@@ -1181,6 +1203,46 @@ export function App(): React.JSX.Element {
                 <div className="seg">
                   <button className={prefs.showNoteNames ? 'on' : ''} onClick={() => set('showNoteNames', true)}>מוצג</button>
                   <button className={!prefs.showNoteNames ? 'on' : ''} onClick={() => set('showNoteNames', false)}>מוסתר</button>
+                </div>
+              </div>
+              <div className="row">
+                <span>אקורד בלחיצה אחת (הרמוניה)</span>
+                <div className="seg">
+                  {(
+                    [
+                      ['off', 'כבוי'],
+                      ['octave', 'אוקטבה'],
+                      ['fifth', 'כוח 5'],
+                      ['triad', 'אקורד']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.harmonize === v ? 'on' : ''} onClick={() => set('harmonize', v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>סגנון במה (ויזואל)</span>
+                <div className="seg">
+                  {(
+                    [
+                      ['classic', 'קלאסי'],
+                      ['galaxy', 'גלקסיה'],
+                      ['mirror', 'מראה']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.visualMode === v ? 'on' : ''} onClick={() => set('visualMode', v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>מעגל הקווינטות החי</span>
+                <div className="seg">
+                  <button className={prefs.showWheel ? 'on' : ''} onClick={() => set('showWheel', true)}>מוצג</button>
+                  <button className={!prefs.showWheel ? 'on' : ''} onClick={() => set('showWheel', false)}>מוסתר</button>
                 </div>
               </div>
               <div className="row">

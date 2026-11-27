@@ -22,6 +22,7 @@ type Voice = {
 export type Effects = { reverb: number; delay: number; delayTime: number; brightness: number }
 export type GrooveId = 'click' | 'pop' | 'ballad' | 'bossa'
 export type ArpMode = 'up' | 'down' | 'updown'
+export type HarmonizeMode = 'off' | 'octave' | 'fifth' | 'triad'
 
 export type TeachEvent =
   | { type: 'wait'; notes: number[]; index: number; total: number }
@@ -86,6 +87,20 @@ class Engine {
   private arpTimer: number | null = null
   private arpIdx = 0
   private arpDir = 1
+
+  // smart harmonizer (1-finger chord voicing)
+  harmonize: HarmonizeMode = 'off'
+  private harmChildren = new Map<number, number[]>()
+
+  // live overdub looper
+  loopRec = false
+  loopPlaying = false
+  private loopStart = 0
+  private loopLen = 0
+  private loopEvents: { midi: number; offset: number; dur: number; vel: number }[] = []
+  private loopOpen = new Map<number, { t: number; v: number }>()
+  private loopTimer: number | null = null
+  onLoopState: (() => void) | null = null
 
   // teacher (wait mode)
   learn = false
@@ -233,6 +248,23 @@ class Engine {
       this.emit(m, true)
       return
     }
+    this.triggerSingleOn(m, velocity)
+    if (!this.learn && this.harmonize !== 'off') {
+      const extras =
+        this.harmonize === 'octave'
+          ? [m + 12]
+          : this.harmonize === 'fifth'
+            ? [m + 7]
+            : [m + 4, m + 7]
+      const valid = extras.filter((x) => x <= 108)
+      this.harmChildren.set(m, valid)
+      for (const x of valid) this.triggerSingleOn(x, velocity * 0.72)
+    }
+    if (this.learn && this.playing) this.checkInput(m)
+  }
+
+  private triggerSingleOn(m: number, velocity: number): void {
+    if (!this.voice || m < 21 || m > 108) return
     if (this.sounding.has(m)) this.release(m)
     this.held.add(m)
     this.sounding.add(m)
@@ -241,8 +273,8 @@ class Engine {
       this.layerVoice.triggerAttack(toNoteName(m), Tone.now(), velocity * this.layerMix)
     }
     if (this.recording) this.recOpen.set(m, { t: wall() - this.recStart, v: velocity })
+    if (this.loopRec) this.loopOpen.set(m, { t: wall() - this.loopStart, v: velocity })
     this.emit(m, true)
-    if (this.learn && this.playing) this.checkInput(m)
   }
 
   noteOff(m: number): void {
@@ -252,8 +284,15 @@ class Engine {
       if (this.held.size === 0) this.stopArp()
       return
     }
-    if (this.sustain) return
-    this.release(m)
+    if (!this.sustain) this.release(m)
+    const extras = this.harmChildren.get(m)
+    if (extras) {
+      this.harmChildren.delete(m)
+      for (const x of extras) {
+        this.held.delete(x)
+        if (!this.sustain) this.release(x)
+      }
+    }
   }
 
   private release(m: number): void {
@@ -268,6 +307,12 @@ class Engine {
       const end = wall() - this.recStart
       this.recNotes.push({ midi: m, time: open.t, duration: Math.max(0.05, end - open.t), velocity: open.v, track: 0 })
       this.recOpen.delete(m)
+    }
+    const lopen = this.loopOpen.get(m)
+    if (this.loopRec && lopen) {
+      const end = wall() - this.loopStart
+      this.loopEvents.push({ midi: m, offset: lopen.t, dur: Math.max(0.06, end - lopen.t), vel: lopen.v })
+      this.loopOpen.delete(m)
     }
     this.emit(m, false)
   }
@@ -383,6 +428,63 @@ class Engine {
       clearInterval(this.arpTimer)
       this.arpTimer = null
     }
+  }
+
+  // ---------------- live overdub looper ----------------
+  toggleLiveLoop(): void {
+    if (!this.loopRec && !this.loopPlaying) {
+      this.loopEvents = []
+      this.loopOpen.clear()
+      this.loopStart = wall()
+      this.loopRec = true
+      this.loopPlaying = false
+      this.onLoopState?.()
+      return
+    }
+    if (this.loopRec) {
+      const end = wall() - this.loopStart
+      for (const [m, o] of this.loopOpen) {
+        this.loopEvents.push({ midi: m, offset: o.t, dur: Math.max(0.06, end - o.t), vel: o.v })
+      }
+      this.loopOpen.clear()
+      this.loopRec = false
+      this.loopLen = Math.max(0.6, end)
+      if (!this.loopEvents.length) {
+        this.loopPlaying = false
+        this.onLoopState?.()
+        return
+      }
+      this.startLiveLoopPlayback()
+      return
+    }
+    this.clearLiveLoop()
+  }
+
+  private startLiveLoopPlayback(): void {
+    if (this.loopTimer !== null) clearInterval(this.loopTimer)
+    this.loopPlaying = true
+    const runCycle = (): void => {
+      if (!this.loopPlaying || !this.voice) return
+      const now = Tone.now()
+      for (const ev of this.loopEvents) {
+        this.voice.triggerAttackRelease(toNoteName(ev.midi), ev.dur, now + ev.offset, ev.vel * 0.72)
+      }
+    }
+    runCycle()
+    this.loopTimer = window.setInterval(runCycle, this.loopLen * 1000)
+    this.onLoopState?.()
+  }
+
+  clearLiveLoop(): void {
+    this.loopRec = false
+    this.loopPlaying = false
+    this.loopEvents = []
+    this.loopOpen.clear()
+    if (this.loopTimer !== null) {
+      clearInterval(this.loopTimer)
+      this.loopTimer = null
+    }
+    this.onLoopState?.()
   }
 
   allLiveOff(): void {

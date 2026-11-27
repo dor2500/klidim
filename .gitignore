@@ -1,3 +1,8 @@
 node_modules/
 out/
 dist/
+dist-web/
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/

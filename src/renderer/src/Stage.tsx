@@ -5,8 +5,12 @@ import { codeLabel, isBlack, noteName, pianoLayout, shortNoteName } from './musi
 export const TRACK_COLORS = ['#f59e0b', '#38bdf8', '#34d399', '#fb7185', '#a78bfa', '#fb923c']
 const LIVE_COLOR = '#fbbf24'
 
+export type VisualMode = 'classic' | 'galaxy' | 'mirror'
+
 type Trail = { midi: number; start: number; end: number | null }
 type Spark = { x: number; y: number; vx: number; vy: number; life: number; color: string }
+type Ripple = { x: number; y: number; r: number; maxR: number; life: number; color: string }
+type Star = { x: number; y: number; r: number; speed: number; alpha: number }
 
 type Props = {
   lo: number
@@ -15,29 +19,50 @@ type Props = {
   labels: 'keys' | 'notes' | 'none'
   showNoteNames?: boolean
   visualizer?: boolean
+  visualMode?: VisualMode
   scaleNotes?: Set<number>
   scaleRoot?: number
+  onPlayNote?: () => void
 }
 
-export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer = true, scaleNotes, scaleRoot }: Props): React.JSX.Element {
+export function Stage({
+  lo,
+  hi,
+  keymap,
+  labels,
+  showNoteNames = true,
+  visualizer = true,
+  visualMode = 'classic',
+  scaleNotes,
+  scaleRoot,
+  onPlayNote
+}: Props): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const keyEls = useRef(new Map<number, HTMLDivElement>())
   const trails = useRef<Trail[]>([])
   const sparks = useRef<Spark[]>([])
+  const ripples = useRef<Ripple[]>([])
+  const stars = useRef<Star[]>(
+    Array.from({ length: 55 }, () => ({
+      x: Math.random(),
+      y: Math.random(),
+      r: 0.7 + Math.random() * 1.6,
+      speed: 0.008 + Math.random() * 0.022,
+      alpha: 0.2 + Math.random() * 0.55
+    }))
+  )
+  const energyRef = useRef(0)
   const { keys, whites } = useMemo(() => pianoLayout(lo, hi), [lo, hi])
   const keyAt = useMemo(() => new Map(keys.map((k) => [k.midi, k])), [keys])
 
   const keyLabel = useMemo(() => {
     const byNote = new Map<number, string>()
-    // rows overlap; the map lists the top row first, so each octave is labeled by the
-    // row that starts on its דו
     for (const [code, m] of keymap) if (!byNote.has(m)) byNote.set(m, codeLabel(code))
-    // black keys: Shift + the white key below
     for (const [m, l] of [...byNote]) if (isBlack(m + 1) && !byNote.has(m + 1)) byNote.set(m + 1, `⇧${l}`)
     return byNote
   }, [keymap])
 
-  // live notes → key highlight + rising trails + hit sparks
+  // live notes → key highlight + rising trails + sparks/ripples
   useEffect(
     () =>
       engine.onLive((m, on) => {
@@ -45,22 +70,34 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
         const now = performance.now() / 1000
         if (on) {
           trails.current.push({ midi: m, start: now, end: null })
+          energyRef.current = Math.min(1, energyRef.current + 0.35)
           const cv = canvasRef.current
           const k = keyAt.get(m)
           if (cv && k) {
             const unit = cv.clientWidth / whites
             const cx = (k.x + k.w / 2) * unit
             const cy = cv.clientHeight - 2
-            for (let i = 0; i < 6; i++) {
-              const angle = -Math.PI * (0.15 + Math.random() * 0.7)
-              const speed = 35 + Math.random() * 75
+            const sparkCount = visualMode === 'galaxy' ? 10 : 6
+            for (let i = 0; i < sparkCount; i++) {
+              const angle = -Math.PI * (0.12 + Math.random() * 0.76)
+              const speed = 35 + Math.random() * 85
               sparks.current.push({
                 x: cx + (Math.random() - 0.5) * k.w * unit * 0.5,
                 y: cy,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 life: 1,
-                color: LIVE_COLOR
+                color: visualMode === 'galaxy' && i % 2 === 0 ? '#38bdf8' : LIVE_COLOR
+              })
+            }
+            if (visualMode === 'mirror' || visualMode === 'galaxy') {
+              ripples.current.push({
+                x: cx,
+                y: cy - 8,
+                r: 4,
+                maxR: visualMode === 'mirror' ? 95 : 65,
+                life: 1,
+                color: visualMode === 'mirror' ? '#f59e0b' : '#38bdf8'
               })
             }
           }
@@ -68,7 +105,7 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
           for (const t of trails.current) if (t.midi === m && t.end === null) t.end = now
         }
       }),
-    [keyAt, whites]
+    [keyAt, visualMode, whites]
   )
 
   // draw loop
@@ -84,6 +121,7 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
       raf = requestAnimationFrame(frame)
       const dt = Math.min(0.05, (ts - lastTs) / 1000)
       lastTs = ts
+      energyRef.current = Math.max(0, energyRef.current - dt * 0.85)
       const dpr = window.devicePixelRatio || 1
       const W = cv.clientWidth
       const H = cv.clientHeight
@@ -94,7 +132,25 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
       ctx.clearRect(0, 0, W, H)
       const unit = W / whites
-      const pps = Math.max(120, H / 3.2) // pixels per second
+      const pps = Math.max(120, H / 3.2)
+
+      // Galaxy starfield backdrop
+      if (visualMode === 'galaxy') {
+        const boost = 1 + energyRef.current * 3.5
+        for (const st of stars.current) {
+          st.y -= st.speed * boost * dt
+          if (st.y < -0.02) {
+            st.y = 1.02
+            st.x = Math.random()
+          }
+          ctx.globalAlpha = st.alpha * (0.55 + energyRef.current * 0.45)
+          ctx.fillStyle = st.r > 1.7 ? '#f5c469' : '#bae6fd'
+          ctx.beginPath()
+          ctx.arc(st.x * W, st.y * H, st.r, 0, Math.PI * 2)
+          ctx.fill()
+        }
+        ctx.globalAlpha = 1
+      }
 
       // subtle black-key lane shading + octave C guide lines
       for (const k of keys) {
@@ -115,7 +171,6 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
         const t = engine.time
         const ahead = H / pps
 
-        // subtle beat grid lines scrolling down
         ctx.fillStyle = 'rgba(255, 255, 255, 0.025)'
         const beatSec = 0.5
         const firstBeat = Math.floor(t / beatSec) * beatSec
@@ -152,14 +207,12 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
           ctx.fill()
           ctx.shadowBlur = 0
 
-          // inner highlight rim on note bar
           if (!muted && h > 10) {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
             roundRect(ctx, x + 1.5, yTop + 1.5, Math.max(2, w - 3), Math.min(5, h - 3), 3)
             ctx.fill()
           }
 
-          // note name inside falling bar when wide & tall enough
           if (showNoteNames && !muted && w >= 18 && h >= 20) {
             ctx.fillStyle = 'rgba(11, 12, 16, 0.85)'
             ctx.font = `700 ${Math.min(11, Math.floor(w * 0.48))}px "Rubik Variable", sans-serif`
@@ -189,7 +242,31 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
         ctx.fillStyle = g
         roundRect(ctx, x, Math.max(yTop, -10), w, Math.max(4, yBottom - Math.max(yTop, -10)), Math.min(7, w / 2))
         ctx.fill()
+
+        if (visualMode === 'mirror') {
+          const mirrorY = Math.max(0, H - yBottom)
+          const mh = Math.max(4, yBottom - Math.max(yTop, -10))
+          ctx.globalAlpha = 0.22
+          ctx.fillStyle = '#38bdf8'
+          roundRect(ctx, x, mirrorY * 0.35, w, mh * 0.35, Math.min(7, w / 2))
+          ctx.fill()
+          ctx.globalAlpha = 1
+        }
       }
+
+      // ripples
+      ripples.current = ripples.current.filter((rp) => rp.life > 0.03)
+      for (const rp of ripples.current) {
+        rp.r += (rp.maxR - rp.r) * dt * 5
+        rp.life -= dt * 1.9
+        ctx.globalAlpha = Math.max(0, rp.life * 0.55)
+        ctx.strokeStyle = rp.color
+        ctx.lineWidth = 1.6
+        ctx.beginPath()
+        ctx.ellipse(rp.x, rp.y, rp.r, rp.r * 0.36, 0, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
 
       // hit sparks
       sparks.current = sparks.current.filter((s) => s.life > 0.04)
@@ -207,11 +284,11 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
       ctx.globalAlpha = 1
 
       // warm brass horizon glow where notes meet the keybed
-      const glow = ctx.createLinearGradient(0, H - 28, 0, H)
+      const glow = ctx.createLinearGradient(0, H - 30, 0, H)
       glow.addColorStop(0, 'rgba(229, 169, 60, 0)')
-      glow.addColorStop(1, 'rgba(229, 169, 60, 0.24)')
+      glow.addColorStop(1, `rgba(229, 169, 60, ${0.2 + energyRef.current * 0.25})`)
       ctx.fillStyle = glow
-      ctx.fillRect(0, H - 28, W, 28)
+      ctx.fillRect(0, H - 30, W, 30)
 
       // live audio waveform ribbon
       if (visualizer) {
@@ -227,14 +304,14 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
               if (i === 0) ctx.moveTo(x, y)
               else ctx.lineTo(x, y)
             }
-            ctx.strokeStyle = `rgba(245, 196, 105, ${Math.min(0.65, peak * 3.2)})`
+            ctx.strokeStyle = `rgba(245, 196, 105, ${Math.min(0.7, peak * 3.4)})`
             ctx.lineWidth = 2
             ctx.stroke()
           }
         }
       }
 
-      // song highlight on the keys (only touch the DOM when it changes)
+      // song highlight on the keys
       for (const [m, tr] of songKeys) {
         if (lastSongKeys.get(m) !== tr) {
           const el = keyEls.current.get(m)
@@ -258,14 +335,12 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
           const k = keyAt.get(m)
           if (!k) continue
           const x = k.x * unit + (k.w * unit) / 2
-          // subtle guide beam
           const beam = ctx.createLinearGradient(0, 0, 0, H)
           beam.addColorStop(0, 'rgba(251, 191, 36, 0)')
           beam.addColorStop(1, `rgba(251, 191, 36, ${engine.waiting ? 0.14 * pulse : 0.06})`)
           ctx.fillStyle = beam
           ctx.fillRect(k.x * unit, 0, k.w * unit, H)
 
-          // glowing marker triangle above the key
           ctx.globalAlpha = engine.waiting ? pulse : 0.55
           ctx.fillStyle = '#fbbf24'
           ctx.beginPath()
@@ -280,66 +355,88 @@ export function Stage({ lo, hi, keymap, labels, showNoteNames = true, visualizer
     }
     raf = requestAnimationFrame(frame)
     return () => cancelAnimationFrame(raf)
-  }, [keyAt, keys, showNoteNames, visualizer, whites])
+  }, [keyAt, keys, showNoteNames, visualMode, visualizer, whites])
 
-  // mouse / touch playing with glissando
-  const down = useRef<number | null>(null)
+  // true multi-touch + mouse glissando (tracks each pointerId separately)
+  const pointers = useRef(new Map<number, number>())
   useEffect(() => {
-    const up = (): void => {
-      if (down.current !== null) engine.noteOff(down.current)
-      down.current = null
+    const releasePtr = (e: PointerEvent): void => {
+      const m = pointers.current.get(e.pointerId)
+      if (m !== undefined) {
+        engine.noteOff(m)
+        pointers.current.delete(e.pointerId)
+      }
     }
-    window.addEventListener('pointerup', up)
-    window.addEventListener('blur', up)
+    const blur = (): void => {
+      for (const m of pointers.current.values()) engine.noteOff(m)
+      pointers.current.clear()
+    }
+    window.addEventListener('pointerup', releasePtr)
+    window.addEventListener('pointercancel', releasePtr)
+    window.addEventListener('blur', blur)
     return () => {
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('blur', up)
+      window.removeEventListener('pointerup', releasePtr)
+      window.removeEventListener('pointercancel', releasePtr)
+      window.removeEventListener('blur', blur)
     }
   }, [])
+
   const press = (m: number, e: React.PointerEvent): void => {
     e.preventDefault()
     ;(e.target as HTMLElement).releasePointerCapture?.(e.pointerId)
-    down.current = m
+    const prev = pointers.current.get(e.pointerId)
+    if (prev !== undefined && prev !== m) engine.noteOff(prev)
+    pointers.current.set(e.pointerId, m)
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const depth = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
     engine.noteOn(m, 0.45 + depth * 0.45)
+    onPlayNote?.()
   }
-  const enter = (m: number): void => {
-    if (down.current === null || down.current === m) return
-    engine.noteOff(down.current)
-    down.current = m
-    engine.noteOn(m, 0.7)
+
+  const enter = (m: number, e: React.PointerEvent): void => {
+    const prev = pointers.current.get(e.pointerId)
+    if (prev === undefined || prev === m) return
+    engine.noteOff(prev)
+    pointers.current.set(e.pointerId, m)
+    engine.noteOn(m, 0.72)
   }
 
   return (
     <div className="stage">
       <canvas ref={canvasRef} className="falls" />
+      <div className="fallboard" aria-hidden>
+        <span className="fallboard-plate">KLIDIM · קלידים</span>
+      </div>
       <div className="keybed-felt" aria-hidden />
-      <div className="piano" dir="ltr">
-        {keys.map((k) => {
-          const label = labels === 'keys' ? keyLabel.get(k.midi) : labels === 'notes' ? shortNoteName(k.midi) : undefined
-          const pc = k.midi % 12
-          const inScale = scaleNotes && scaleNotes.size > 0 && scaleNotes.has(pc)
-          const isRoot = inScale && scaleRoot === pc
-          return (
-            <div
-              key={k.midi}
-              ref={(el) => {
-                if (el) keyEls.current.set(k.midi, el)
-                else keyEls.current.delete(k.midi)
-              }}
-              className={`${k.black ? 'key black' : 'key white'}${inScale ? ' in-scale' : ''}${isRoot ? ' scale-root' : ''}`}
-              style={{ left: `${(k.x / whites) * 100}%`, width: `${(k.w / whites) * 100}%` }}
-              onPointerDown={(e) => press(k.midi, e)}
-              onPointerEnter={() => enter(k.midi)}
-              title={noteName(k.midi)}
-            >
-              {inScale && <span className="scale-dot" aria-hidden />}
-              {label && <span className="lbl">{label}</span>}
-              {!k.black && k.midi % 12 === 0 && <span className="oct">{noteName(k.midi)}</span>}
-            </div>
-          )
-        })}
+      <div className="piano-chassis">
+        <div className="cheek" aria-hidden />
+        <div className="piano" dir="ltr">
+          {keys.map((k) => {
+            const label = labels === 'keys' ? keyLabel.get(k.midi) : labels === 'notes' ? shortNoteName(k.midi) : undefined
+            const pc = k.midi % 12
+            const inScale = scaleNotes && scaleNotes.size > 0 && scaleNotes.has(pc)
+            const isRoot = inScale && scaleRoot === pc
+            return (
+              <div
+                key={k.midi}
+                ref={(el) => {
+                  if (el) keyEls.current.set(k.midi, el)
+                  else keyEls.current.delete(k.midi)
+                }}
+                className={`${k.black ? 'key black' : 'key white'}${inScale ? ' in-scale' : ''}${isRoot ? ' scale-root' : ''}`}
+                style={{ left: `${(k.x / whites) * 100}%`, width: `${(k.w / whites) * 100}%` }}
+                onPointerDown={(e) => press(k.midi, e)}
+                onPointerEnter={(e) => enter(k.midi, e)}
+                title={noteName(k.midi)}
+              >
+                {inScale && <span className="scale-dot" aria-hidden />}
+                {label && <span className="lbl">{label}</span>}
+                {!k.black && k.midi % 12 === 0 && <span className="oct">{noteName(k.midi)}</span>}
+              </div>
+            )
+          })}
+        </div>
+        <div className="cheek" aria-hidden />
       </div>
     </div>
   )
