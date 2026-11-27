@@ -24,8 +24,9 @@ import { Stage, TRACK_COLORS, type VisualMode } from './Stage'
 import { Icon } from './icons'
 import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle } from './ai'
 import { HarmonicWheel } from './HarmonicWheel'
+import { pickAudioFile, songFromAudio } from './audioToMidi'
 
-const APP_VERSION = '0.7.0'
+const APP_VERSION = '0.8.0'
 
 type ReleaseAsset = { name: string; url: string; size: number }
 type UpdateState = {
@@ -566,6 +567,19 @@ export function App(): React.JSX.Element {
       say(e instanceof Error && e.message.startsWith('אין') ? e.message : 'לא הצלחתי לקרוא את הקובץ')
     }
   }
+  const openAudioAsMidi = async (): Promise<void> => {
+    setMenu(false)
+    const f = await pickAudioFile()
+    if (!f) return
+    say('ממיר MP3 ל-MIDI…')
+    try {
+      const s = await songFromAudio(f.name, f.data)
+      loadSong(s)
+      say(`ההמרה הושלמה (${s.notes.length} תווים)! אפשר לנגן או לשמור כ-MIDI`)
+    } catch (e) {
+      say(e instanceof Error ? e.message : 'לא הצלחתי להמיר את קובץ האודיו')
+    }
+  }
   const toggleTrack = (i: number): void => {
     if (engine.muted.has(i)) engine.muted.delete(i)
     else engine.muted.add(i)
@@ -618,7 +632,7 @@ export function App(): React.JSX.Element {
   const nextLesson = lesson ? LESSONS[LESSONS.findIndex((l) => l.id === lesson.id) + 1] : undefined
   const completedCount = LESSONS.filter((l) => (stars[l.id] ?? 0) > 0).length
 
-  // drag & drop a .mid file anywhere
+  // drag & drop a .mid or audio (.mp3/.wav/.ogg/.m4a) file anywhere
   useEffect(() => {
     const over = (e: DragEvent): void => e.preventDefault()
     const drop = async (e: DragEvent): Promise<void> => {
@@ -626,9 +640,16 @@ export function App(): React.JSX.Element {
       const f = e.dataTransfer?.files[0]
       if (!f) return
       try {
-        loadSong(songFromMidi(f.name, await f.arrayBuffer()))
+        if (/\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name) || f.type.startsWith('audio/')) {
+          say('ממיר קובץ אודיו ל-MIDI…')
+          const s = await songFromAudio(f.name, await f.arrayBuffer())
+          loadSong(s)
+          say(`ההמרה הושלמה (${s.notes.length} תווים)!`)
+        } else {
+          loadSong(songFromMidi(f.name, await f.arrayBuffer()))
+        }
       } catch {
-        say('אפשר לגרור לכאן רק קובצי MIDI')
+        say('אפשר לגרור לכאן קובצי MIDI או MP3/אודיו')
       }
     }
     window.addEventListener('dragover', over)
@@ -775,6 +796,9 @@ export function App(): React.JSX.Element {
                 </div>
                 <button className="menu-item accent" onClick={openFile}>
                   <Icon name="folder" /> פתיחת קובץ MIDI מהמחשב…
+                </button>
+                <button className="menu-item accent" onClick={openAudioAsMidi}>
+                  <Icon name="wave" /> המרת MP3 / אודיו ל-MIDI…
                 </button>
 
                 {recordings.length > 0 && (
