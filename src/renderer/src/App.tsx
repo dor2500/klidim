@@ -26,7 +26,7 @@ import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle }
 import { HarmonicWheel } from './HarmonicWheel'
 import { pickAudioFile, songFromAudio } from './audioToMidi'
 
-const APP_VERSION = '1.0.1'
+const APP_VERSION = '1.0.2'
 
 type DesktopApi = {
   isPortable?: boolean
@@ -1632,7 +1632,7 @@ export function App(): React.JSX.Element {
                         <b>נמצאה גרסה חדשה: v{updateState.latest}!</b>
                         {updatePct !== null ? (
                           <div style={{ marginTop: 10 }}>
-                            <div style={{ marginBottom: 6 }}>מוריד ומתקין בשקט… {updatePct}%</div>
+                            <div style={{ marginBottom: 6 }}>מוריד ומפעיל התקנה… {updatePct}%</div>
                             <div className="teacher-progress" style={{ marginTop: 0 }}>
                               <div style={{ width: `${updatePct}%` }} />
                             </div>
@@ -1641,7 +1641,7 @@ export function App(): React.JSX.Element {
                           <div className="release-assets">
                             {desktopApi()?.installUpdate ? (
                               <button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => void runSilentUpdate()}>
-                                עדכן והתקן עכשיו (התקנה שקטה)
+                                עדכן והתקן עכשיו
                               </button>
                             ) : (
                               <a className="asset-link" href={platformAsset.url} target="_blank" rel="noreferrer">
@@ -1857,7 +1857,7 @@ export function App(): React.JSX.Element {
                 {updateState.notes && <pre className="release-notes">{updateState.notes.slice(0, 420)}</pre>}
                 {updatePct !== null ? (
                   <div style={{ marginTop: 12 }}>
-                    <div style={{ marginBottom: 6 }}>מוריד ומתקין בשקט… {updatePct}%</div>
+                    <div style={{ marginBottom: 6 }}>מוריד ומפעיל התקנה… {updatePct}%</div>
                     <div className="teacher-progress" style={{ marginTop: 0 }}>
                       <div style={{ width: `${updatePct}%` }} />
                     </div>
@@ -1866,7 +1866,7 @@ export function App(): React.JSX.Element {
                   <div className="welcome-actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
                     {desktopApi()?.installUpdate && platformAsset ? (
                       <button className="btn primary" onClick={() => void runSilentUpdate()}>
-                        עדכן והתקן עכשיו (התקנה שקטה)
+                        עדכן והתקן עכשיו
                       </button>
                     ) : (
                       <a className="btn primary" href={platformAsset?.url || updateState.url} target="_blank" rel="noreferrer">

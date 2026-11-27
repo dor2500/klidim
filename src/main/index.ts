@@ -1,9 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, session, shell } from 'electron'
 import { basename, join, normalize, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createWriteStream } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { spawn } from 'node:child_process'
 
 // The renderer is served from app://piano/ so that fetch() can load the piano samples.
 protocol.registerSchemesAsPrivileged([
@@ -106,22 +105,9 @@ app.whenReady().then(() => {
       })
       e.sender.send('update-progress', 100)
 
-      if (/portable/i.test(safeName)) {
-        spawn(dest, [], { detached: true, stdio: 'ignore' }).unref()
-      } else {
-        const ps = [
-          'Start-Sleep -Milliseconds 700',
-          `Start-Process -FilePath '${dest.replace(/'/g, "''")}' -ArgumentList '/S' -Wait`,
-          `$p1 = Join-Path $env:LOCALAPPDATA 'Programs\\Klidim\\Klidim.exe'`,
-          `$p2 = Join-Path $env:ProgramFiles 'Klidim\\Klidim.exe'`,
-          `if (Test-Path $p1) { Start-Process $p1 } elseif (Test-Path $p2) { Start-Process $p2 }`
-        ].join('; ')
-        spawn('powershell.exe', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], {
-          detached: true,
-          stdio: 'ignore'
-        }).unref()
-      }
-      setTimeout(() => app.quit(), 350)
+      const openErr = await shell.openPath(dest)
+      if (openErr) return { ok: false, error: openErr }
+      setTimeout(() => app.quit(), 600)
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'שגיאה בהתקנת העדכון' }
