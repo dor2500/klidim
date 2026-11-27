@@ -19,15 +19,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.3.0.exe"><b>⬇️ הורדה להתקנה</b></a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.4.0.exe"><b>⬇️ הורדה להתקנה</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.3.0.exe">גרסה ניידת (בלי התקנה)</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.4.0.exe">גרסה ניידת (בלי התקנה)</a>
 </p>
 
 ![שיר מתנגן עם תווים נופלים](docs/screenshots/playing.png)
 
 ## מה יש בתוכנה
 
+- 🤖 **סטודיו AI (מלחין + אלתור משותף)** – יוצר יצירות מקוריות בשתי ידיים (קלאסי, ג׳אז, פופ, חיג׳אז וקולנועי) או מאלתר איתכם בתור־אחר־תור ("תור ה-AI").
+- 🔄 **בדיקת עדכונים מובנית** – כפתור עדכונים בסרגל העליון שבודק גרסאות חדשות מול GitHub Releases.
 - 🎓 **מורה אישי** – 10 שיעורים שלב אחרי שלב. השיר מחכה לכם בכל צליל, הקליד הבא מהבהב בצהוב, המורה מתקן טעויות, מפרגן על רצפים ונותן ציון וכוכבים בסוף.
 - 🎻 **10 כלי נגינה + שכבת צליל שנייה (Dual Layer)** – פסנתר כנף, פסנתר חשמלי, אורגן, כלי קשת, צ'מבלו, תיבת נגינה, סינתיסייזר, פד חלומי, מרימבה ובס אנלוגי, עם אפשרות לשלב שני כלים יחד.
 - 🎚️ **אפקטים וגל קול חי** – הד (ריוורב), השהייה (אקו) עם שלושה זמנים, בהירות הצליל, וספקטרום גל קול חי על הבמה.
@@ -59,11 +61,11 @@
 
 ## התקנה
 
-1. מורידים את **[Klidim-Setup-0.3.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.3.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
+1. מורידים את **[Klidim-Setup-0.4.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.4.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
 2. מפעילים את הקובץ ובוחרים לאן להתקין.
 3. נוצר קיצור דרך בשולחן העבודה ובתפריט התחל בשם **קלידים**.
 
-**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.3.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
+**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.4.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
 
 > [!NOTE]
 > התוכנה לא חתומה דיגיטלית, ולכן ייתכן ש-Windows יציג את המסך "Windows protected your PC". לוחצים על **More info** ואז על **Run anyway**.

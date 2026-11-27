@@ -21,6 +21,28 @@ import {
 import { BUILTIN } from './songs'
 import { Stage, TRACK_COLORS } from './Stage'
 import { Icon } from './icons'
+import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle } from './ai'
+
+const APP_VERSION = '0.4.0'
+
+type UpdateState = {
+  checking: boolean
+  latest: string | null
+  hasUpdate: boolean
+  url: string
+  notes: string
+  error: string | null
+}
+
+function isNewerVersion(latest: string, current: string): boolean {
+  const a = latest.replace(/^v/i, '').split('.').map(Number)
+  const b = current.replace(/^v/i, '').split('.').map(Number)
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true
+    if ((a[i] || 0) < (b[i] || 0)) return false
+  }
+  return false
+}
 
 type Labels = 'keys' | 'notes' | 'none'
 type ThemeId = 'brass' | 'aurora' | 'rosewood' | 'ivory'
@@ -128,6 +150,20 @@ export function App(): React.JSX.Element {
   const [menu, setMenu] = useState(false)
   const [help, setHelp] = useState(false)
   const [settings, setSettings] = useState(false)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [aiStyle, setAiStyle] = useState<AiStyle>('classical')
+  const [aiBars, setAiBars] = useState(8)
+  const [aiLevel, setAiLevel] = useState<AiLevel>('medium')
+  const [aiJam, setAiJam] = useState(false)
+  const [updatesOpen, setUpdatesOpen] = useState(false)
+  const [updateState, setUpdateState] = useState<UpdateState>({
+    checking: false,
+    latest: null,
+    hasUpdate: false,
+    url: 'https://github.com/dor2500/klidim/releases/latest',
+    notes: '',
+    error: null
+  })
   const [played, setPlayed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [activeNotes, setActiveNotes] = useState<number[]>([])
@@ -148,6 +184,38 @@ export function App(): React.JSX.Element {
     setToast(msg)
     window.setTimeout(() => setToast((t) => (t === msg ? null : t)), 3200)
   }, [])
+
+  const checkUpdates = useCallback(async (silent = false): Promise<void> => {
+    setUpdateState((u) => ({ ...u, checking: true, error: null }))
+    try {
+      const res = await fetch('https://api.github.com/repos/dor2500/klidim/releases/latest', {
+        headers: { Accept: 'application/vnd.github+json' }
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = (await res.json()) as { tag_name?: string; html_url?: string; body?: string }
+      const latest = (data.tag_name || '').replace(/^v/i, '')
+      const hasUpdate = Boolean(latest && isNewerVersion(latest, APP_VERSION))
+      setUpdateState({
+        checking: false,
+        latest: latest || APP_VERSION,
+        hasUpdate,
+        url: data.html_url || 'https://github.com/dor2500/klidim/releases/latest',
+        notes: data.body || '',
+        error: null
+      })
+      if (!silent && hasUpdate) say(`נמצאה גרסה חדשה: ${latest}!`)
+    } catch {
+      setUpdateState((u) => ({
+        ...u,
+        checking: false,
+        error: silent ? null : 'לא ניתן לבדוק עדכונים כרגע (בדקו חיבור לאינטרנט)'
+      }))
+    }
+  }, [say])
+
+  useEffect(() => {
+    void checkUpdates(true)
+  }, [checkUpdates])
 
   useEffect(() => {
     try {
@@ -205,6 +273,38 @@ export function App(): React.JSX.Element {
       unsubLive()
     }
   }, [])
+
+  // AI Call & Response (תור ה-AI)
+  const aiPhrase = useRef<number[]>([])
+  const aiReplyLock = useRef(false)
+  const aiTimer = useRef<number | null>(null)
+  useEffect(() => {
+    if (!aiJam) {
+      aiPhrase.current = []
+      return
+    }
+    return engine.onLive((m, on) => {
+      if (!on || aiReplyLock.current || engine.playing) return
+      aiPhrase.current.push(m)
+      if (aiTimer.current !== null) clearTimeout(aiTimer.current)
+      aiTimer.current = window.setTimeout(() => {
+        const phrase = aiPhrase.current.slice(-8)
+        aiPhrase.current = []
+        if (phrase.length < 3) return
+        const reply = generateAiReply(phrase)
+        if (!reply.length) return
+        aiReplyLock.current = true
+        for (const step of reply) {
+          window.setTimeout(() => engine.noteOn(step.midi, 0.72), step.delayMs)
+          window.setTimeout(() => engine.noteOff(step.midi), step.delayMs + step.durMs)
+        }
+        const totalMs = reply[reply.length - 1].delayMs + reply[reply.length - 1].durMs + 160
+        window.setTimeout(() => {
+          aiReplyLock.current = false
+        }, totalMs)
+      }, 850)
+    })
+  }, [aiJam])
 
   // UI clock
   useEffect(() => {
@@ -306,6 +406,8 @@ export function App(): React.JSX.Element {
         setMenu(false)
         setHelp(false)
         setSettings(false)
+        setAiOpen(false)
+        setUpdatesOpen(false)
         return
       }
       const base = keymap.get(e.code)
@@ -529,6 +631,17 @@ export function App(): React.JSX.Element {
     say(next ? 'ארפג׳יאטור פעיל – החזיקו אקורד!' : 'ארפג׳יאטור כבוי')
   }
 
+  const runAiCompose = (autoPlay = true): void => {
+    const s = composeAiSong(aiStyle, aiBars, aiLevel)
+    loadSong(s)
+    setAiOpen(false)
+    if (autoPlay) {
+      engine.play()
+      setPlaying(true)
+    }
+    say(`נוצרה יצירה חדשה: ${s.name}`)
+  }
+
   const setOct = (d: number): void => setPrefs((p) => ({ ...p, octave: Math.max(-2, Math.min(2, p.octave + d)) }))
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]): void => setPrefs((p) => ({ ...p, [k]: v }))
   const blurAfter = (e: React.MouseEvent): void => (e.currentTarget as HTMLElement).blur()
@@ -623,10 +736,28 @@ export function App(): React.JSX.Element {
           )}
         </div>
 
-        <div className={`chip ${devices && devices.length ? 'on' : ''}`} title={devices?.join(', ') || ''}>
-          <span className="chip-dot" aria-hidden />
-          <Icon name="midi" />
-          {devices === null ? 'מחפש MIDI…' : devices.length ? devices[0] : 'ללא מקלדת MIDI'}
+        <div className="title-actions">
+          <button className={`title-btn ${aiJam ? 'lit' : ''}`} onClick={() => setAiOpen(true)} title="מלחין AI ואלתור משותף">
+            <Icon name="ai" />
+            <span>סטודיו AI</span>
+          </button>
+          <button
+            className={`title-btn ${updateState.hasUpdate ? 'has-update' : ''}`}
+            onClick={() => {
+              setUpdatesOpen(true)
+              void checkUpdates(false)
+            }}
+            title="בדיקת עדכונים"
+          >
+            <Icon name="update" />
+            <span>עדכונים</span>
+            {updateState.hasUpdate && <span className="update-dot" aria-label="עדכון זמין" />}
+          </button>
+          <div className={`chip ${devices && devices.length ? 'on' : ''}`} title={devices?.join(', ') || ''}>
+            <span className="chip-dot" aria-hidden />
+            <Icon name="midi" />
+            {devices === null ? 'מחפש MIDI…' : devices.length ? devices[0] : 'ללא מקלדת MIDI'}
+          </div>
         </div>
       </header>
 
@@ -788,6 +919,9 @@ export function App(): React.JSX.Element {
             <div className="welcome-actions">
               <button className="btn primary" onClick={() => startLesson(LESSONS[0])}>
                 <Icon name="teacher" /> שיעור ראשון עם המורה
+              </button>
+              <button className="btn" onClick={() => setAiOpen(true)}>
+                <Icon name="ai" /> יצירה עם AI
               </button>
               <button className="btn" onClick={() => setMenu(true)}>
                 <Icon name="music" /> שירים ושיעורים
@@ -1142,6 +1276,127 @@ export function App(): React.JSX.Element {
               צליל הפסנתר: <bdi dir="ltr">Salamander Grand Piano · Alexander Holm · CC BY 3.0</bdi>
             </p>
             <button className="btn primary" onClick={() => setHelp(false)}>הבנתי</button>
+          </div>
+        </div>
+      )}
+
+      {aiOpen && (
+        <div className="modal-wrap" onClick={() => setAiOpen(false)}>
+          <div className="modal ai-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-head">
+              <h2><Icon name="ai" /> סטודיו AI</h2>
+              <button className="round" onClick={() => setAiOpen(false)} aria-label="סגירה">
+                <Icon name="close" />
+              </button>
+            </div>
+
+            <div className="ai-jam-card">
+              <div>
+                <b>אלתור משותף (תור ה-AI)</b>
+                <p>נגנו משפט של 3+ צלילים ועצרו לרגע — ה-AI יאזין לסולם שלכם ויענה בנגינה חיה על הפסנתר.</p>
+              </div>
+              <button
+                className={`btn ${aiJam ? 'primary' : ''}`}
+                onClick={() => {
+                  const next = !aiJam
+                  setAiJam(next)
+                  say(next ? 'מצב תור ה-AI הופעל — נגנו משפט קצר!' : 'מצב תור ה-AI כובה')
+                }}
+              >
+                {aiJam ? 'פעיל ✓' : 'הפעלה'}
+              </button>
+            </div>
+
+            <h3 className="ai-sub">מלחין AI — יצירת קטע חדש בשתי ידיים</h3>
+            <div className="ai-styles">
+              {AI_STYLES.map((s) => (
+                <button
+                  key={s.id}
+                  className={`inst ${aiStyle === s.id ? 'on' : ''}`}
+                  onClick={() => setAiStyle(s.id)}
+                >
+                  <span className="inst-name">{s.name}</span>
+                  <span className="inst-hint">{s.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="row" style={{ marginTop: 14 }}>
+              <span>אורך היצירה</span>
+              <div className="seg">
+                {[4, 8, 12].map((b) => (
+                  <button key={b} className={aiBars === b ? 'on' : ''} onClick={() => setAiBars(b)}>
+                    {b} תיבות
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="row">
+              <span>רמת מורכבות</span>
+              <div className="seg">
+                {(
+                  [
+                    ['easy', 'קל'],
+                    ['medium', 'בינוני'],
+                    ['rich', 'עשיר']
+                  ] as const
+                ).map(([v, l]) => (
+                  <button key={v} className={aiLevel === v ? 'on' : ''} onClick={() => setAiLevel(v)}>
+                    {l}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="welcome-actions" style={{ marginTop: 18 }}>
+              <button className="btn primary" onClick={() => runAiCompose(true)}>
+                <Icon name="sparkles" /> צור יצירה ונגן
+              </button>
+              <button className="btn" onClick={() => runAiCompose(false)}>
+                צור לתרגול עם מורה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {updatesOpen && (
+        <div className="modal-wrap" onClick={() => setUpdatesOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="drawer-head">
+              <h2><Icon name="update" /> עדכוני תוכנה</h2>
+              <button className="round" onClick={() => setUpdatesOpen(false)} aria-label="סגירה">
+                <Icon name="close" />
+              </button>
+            </div>
+            <p className="dim" style={{ marginTop: 6 }}>
+              גרסה מותקנת: <bdi dir="ltr"><b>v{APP_VERSION}</b></bdi>
+            </p>
+            {updateState.checking && <p>בודק עדכונים מול GitHub…</p>}
+            {!updateState.checking && updateState.error && <p className="err-text">{updateState.error}</p>}
+            {!updateState.checking && !updateState.error && updateState.hasUpdate && (
+              <div className="update-box new">
+                <b>גרסה חדשה זמינה: v{updateState.latest}!</b>
+                {updateState.notes && <pre className="release-notes">{updateState.notes.slice(0, 420)}</pre>}
+                <div className="welcome-actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
+                  <a className="btn primary" href={updateState.url} target="_blank" rel="noreferrer">
+                    הורדת הגרסה החדשה
+                  </a>
+                </div>
+              </div>
+            )}
+            {!updateState.checking && !updateState.error && !updateState.hasUpdate && updateState.latest && (
+              <div className="update-box">
+                <b>התוכנה מעודכנת!</b> אתם משתמשים בגרסה האחרונה (<bdi dir="ltr">v{updateState.latest}</bdi>).
+              </div>
+            )}
+            <div className="welcome-actions" style={{ marginTop: 16 }}>
+              <button className="btn" onClick={() => void checkUpdates(false)} disabled={updateState.checking}>
+                <Icon name="update" /> בדוק שוב
+              </button>
+              <button className="btn primary" onClick={() => setUpdatesOpen(false)}>סגירה</button>
+            </div>
           </div>
         </div>
       )}

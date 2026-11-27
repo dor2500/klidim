@@ -41,7 +41,9 @@ const P: Record<string, React.JSX.Element> = {
   palette: <path d="M12 2a10 10 0 0 0 0 20c1.3 0 2.2-1 2.2-2.2 0-.6-.2-1.1-.6-1.5-.4-.4-.6-.9-.6-1.5 0-1.2 1-2.2 2.2-2.2H18a4 4 0 0 0 4-4A8.5 8.5 0 0 0 12 2Zm-4.5 8a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm3-3a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm4 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2Zm2.5 3a1 1 0 1 1 0-2 1 1 0 0 1 0 2Z" />,
   arp: <path d="M4 17l4-4 4 4 4-8 4 4" />,
   wave: <path d="M2 12h3l2-5 3 10 3-14 3 12 2-3h4" />,
-  drum: <><ellipse cx="12" cy="8" rx="8" ry="3.5" /><path d="M4 8v8c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V8M8 11.2v7.8M16 11.2v7.8" /></>
+  drum: <><ellipse cx="12" cy="8" rx="8" ry="3.5" /><path d="M4 8v8c0 1.9 3.6 3.5 8 3.5s8-1.6 8-3.5V8M8 11.2v7.8M16 11.2v7.8" /></>,
+  ai: <><rect x="4" y="6" width="16" height="13" rx="3" /><path d="M12 2v4M9 11h.01M15 11h.01M9 15h6" /></>,
+  update: <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8m0-5v5h5M3 12a9 9 0 0 0 15.5 6.3L21 16m0 5v-5h-5" />
 }
 
 export function Icon({ name }: { name: string }): React.JSX.Element {
