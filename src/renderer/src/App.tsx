@@ -26,7 +26,7 @@ import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle }
 import { HarmonicWheel } from './HarmonicWheel'
 import { pickAudioFile, songFromAudio } from './audioToMidi'
 
-const APP_VERSION = '1.0.0'
+const APP_VERSION = '1.0.1'
 
 type DesktopApi = {
   isPortable?: boolean
@@ -276,7 +276,11 @@ export function App(): React.JSX.Element {
         checkedAt: nowStr,
         error: null
       })
-      if (!silent) say(hasUpdate ? `נמצאה גרסה חדשה: ${latest}!` : `התוכנה מעודכנת (v${APP_VERSION})`)
+      if (!silent) {
+        say(hasUpdate ? `נמצאה גרסה חדשה: ${latest}!` : `התוכנה מעודכנת (v${APP_VERSION})`)
+      } else if (hasUpdate && (desktopApi()?.installUpdate || /Windows/i.test(navigator.userAgent))) {
+        setUpdatesOpen(true)
+      }
     } catch {
       setUpdateState((u) => ({
         ...u,
