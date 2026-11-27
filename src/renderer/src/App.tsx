@@ -26,9 +26,28 @@ import { AI_STYLES, composeAiSong, generateAiReply, type AiLevel, type AiStyle }
 import { HarmonicWheel } from './HarmonicWheel'
 import { pickAudioFile, songFromAudio } from './audioToMidi'
 
-const APP_VERSION = '0.8.0'
+const APP_VERSION = '0.9.0'
+
+type DesktopApi = {
+  isPortable?: boolean
+  installUpdate?: (url: string, fileName: string) => Promise<{ ok: boolean; error?: string }>
+  onUpdateProgress?: (cb: (pct: number) => void) => () => void
+}
+const desktopApi = (): DesktopApi | undefined => (window as unknown as { api?: DesktopApi }).api
 
 type ReleaseAsset = { name: string; url: string; size: number }
+
+function pickPlatformAsset(assets: ReleaseAsset[]): ReleaseAsset | null {
+  if (!assets.length) return null
+  if (/Android/i.test(navigator.userAgent)) {
+    return assets.find((a) => /\.apk$/i.test(a.name)) ?? null
+  }
+  const api = desktopApi()
+  if (api?.isPortable) {
+    return assets.find((a) => /portable.*\.exe$/i.test(a.name)) ?? assets.find((a) => /\.exe$/i.test(a.name)) ?? null
+  }
+  return assets.find((a) => /setup.*\.exe$/i.test(a.name)) ?? assets.find((a) => /\.exe$/i.test(a.name)) ?? null
+}
 type UpdateState = {
   checking: boolean
   latest: string | null
@@ -188,6 +207,7 @@ export function App(): React.JSX.Element {
   const [aiLevel, setAiLevel] = useState<AiLevel>('medium')
   const [aiJam, setAiJam] = useState(false)
   const [updatesOpen, setUpdatesOpen] = useState(false)
+  const [updatePct, setUpdatePct] = useState<number | null>(null)
   const [updateState, setUpdateState] = useState<UpdateState>({
     checking: false,
     latest: null,
@@ -264,6 +284,21 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     if (loadPrefs().autoCheckUpdates) void checkUpdates(true)
   }, [checkUpdates])
+
+  const platformAsset = useMemo(() => pickPlatformAsset(updateState.assets), [updateState.assets])
+
+  const runSilentUpdate = async (): Promise<void> => {
+    const api = desktopApi()
+    if (!api?.installUpdate || !platformAsset) return
+    setUpdatePct(1)
+    const unsub = api.onUpdateProgress?.((pct) => setUpdatePct(pct))
+    const res = await api.installUpdate(platformAsset.url, platformAsset.name)
+    unsub?.()
+    if (!res.ok) {
+      setUpdatePct(null)
+      say(res.error || 'שגיאה בהתקנת העדכון')
+    }
+  }
 
   useEffect(() => {
     try {
@@ -1515,13 +1550,32 @@ export function App(): React.JSX.Element {
                     {updateState.hasUpdate ? (
                       <>
                         <b>נמצאה גרסה חדשה: v{updateState.latest}!</b>
-                        <div className="release-assets">
-                          {updateState.assets.slice(0, 3).map((a) => (
-                            <a key={a.name} className="asset-link" href={a.url} target="_blank" rel="noreferrer">
-                              ⬇ {a.name}
+                        {updatePct !== null ? (
+                          <div style={{ marginTop: 10 }}>
+                            <div style={{ marginBottom: 6 }}>מוריד ומתקין בשקט… {updatePct}%</div>
+                            <div className="teacher-progress" style={{ marginTop: 0 }}>
+                              <div style={{ width: `${updatePct}%` }} />
+                            </div>
+                          </div>
+                        ) : platformAsset ? (
+                          <div className="release-assets">
+                            {desktopApi()?.installUpdate ? (
+                              <button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => void runSilentUpdate()}>
+                                עדכן והתקן עכשיו (התקנה שקטה)
+                              </button>
+                            ) : (
+                              <a className="asset-link" href={platformAsset.url} target="_blank" rel="noreferrer">
+                                ⬇ הורדת עדכון ({platformAsset.name})
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="release-assets">
+                            <a className="asset-link" href={updateState.url} target="_blank" rel="noreferrer">
+                              פתיחת דף ההורדות ב-GitHub
                             </a>
-                          ))}
-                        </div>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <span>
@@ -1721,11 +1775,26 @@ export function App(): React.JSX.Element {
               <div className="update-box new">
                 <b>גרסה חדשה זמינה: v{updateState.latest}!</b>
                 {updateState.notes && <pre className="release-notes">{updateState.notes.slice(0, 420)}</pre>}
-                <div className="welcome-actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
-                  <a className="btn primary" href={updateState.url} target="_blank" rel="noreferrer">
-                    הורדת הגרסה החדשה
-                  </a>
-                </div>
+                {updatePct !== null ? (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ marginBottom: 6 }}>מוריד ומתקין בשקט… {updatePct}%</div>
+                    <div className="teacher-progress" style={{ marginTop: 0 }}>
+                      <div style={{ width: `${updatePct}%` }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="welcome-actions" style={{ justifyContent: 'flex-start', marginTop: 12 }}>
+                    {desktopApi()?.installUpdate && platformAsset ? (
+                      <button className="btn primary" onClick={() => void runSilentUpdate()}>
+                        עדכן והתקן עכשיו (התקנה שקטה)
+                      </button>
+                    ) : (
+                      <a className="btn primary" href={platformAsset?.url || updateState.url} target="_blank" rel="noreferrer">
+                        הורדת הגרסה החדשה{platformAsset ? ` (${platformAsset.name})` : ''}
+                      </a>
+                    )}
+                  </div>
+                )}
               </div>
             )}
             {!updateState.checking && !updateState.error && !updateState.hasUpdate && updateState.latest && (

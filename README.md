@@ -19,11 +19,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.8.0.exe"><b>⬇️ הורדה להתקנה (Windows)</b></a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.9.0.exe"><b>⬇️ הורדה להתקנה (Windows)</b></a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.8.0.exe">גרסה ניידת</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.9.0.exe">גרסה ניידת</a>
   &nbsp;·&nbsp;
-  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.8.0.apk">📱 אנדרואיד (APK)</a>
+  <a href="https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.9.0.apk">📱 אנדרואיד (APK)</a>
 </p>
 
 ![שיר מתנגן עם תווים נופלים](docs/screenshots/playing.png)
@@ -65,13 +65,13 @@
 
 ## התקנה
 
-1. מורידים את **[Klidim-Setup-0.8.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.8.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
+1. מורידים את **[Klidim-Setup-0.9.0.exe](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Setup-0.9.0.exe)** מדף [הגרסאות](https://github.com/dor2500/klidim/releases/latest).
 2. מפעילים את הקובץ ובוחרים לאן להתקין.
 3. נוצר קיצור דרך בשולחן העבודה ובתפריט התחל בשם **קלידים**.
 
-**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.8.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
+**בלי התקנה:** אפשר להוריד את [הגרסה הניידת](https://github.com/dor2500/klidim/releases/latest/download/Klidim-Portable-0.9.0.exe) ולהפעיל אותה ישר, גם מדיסק און קי.
 
-**אנדרואיד:** הורידו את [Klidim-0.8.0.apk](https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.8.0.apk) והתקינו במכשיר (תומך במולטי-טאץ׳ מלא).
+**אנדרואיד:** הורידו את [Klidim-0.9.0.apk](https://github.com/dor2500/klidim/releases/latest/download/Klidim-0.9.0.apk) והתקינו במכשיר (תומך במולטי-טאץ׳ מלא).
 
 > [!NOTE]
 > התוכנה לא חתומה דיגיטלית, ולכן ייתכן ש-Windows יציג את המסך "Windows protected your PC". לוחצים על **More info** ואז על **Run anyway**.
