@@ -1,7 +1,7 @@
 // Step-by-step lessons for the teacher mode. Each one is a song plus the tracks the
 // student plays; the teacher waits on every one of those notes.
 import { makeSong, type Song } from './music'
-import { furElise, odeToJoy, seq, twinkle } from './songs'
+import { furElise, hatikvah, minuetInG, odeToJoy, seq, twinkle, yonatan } from './songs'
 
 export type Lesson = {
   id: string
@@ -45,11 +45,25 @@ export const LESSONS: Lesson[] = [
     make: () => drill('יד שמאל: הבס', 'C3 E3 G3:2 G3 E3 C3:2 C3 G3 C3:2', 1)
   },
   {
+    id: 'yonatan-rh',
+    title: 'יונתן הקטן: יד ימין',
+    intro: 'שיר ילדים מוכר בסולם דו מז׳ור. יד ימין מנגנת את המנגינה, והמורה מלווה ביד שמאל.',
+    play: [0],
+    make: yonatan
+  },
+  {
     id: 'twinkle-rh',
     title: 'כוכב קטן: יד ימין',
     intro: 'השיר הראשון! אתם מנגנים את המנגינה, והמורה מנגן את יד שמאל. השיר מחכה לכם בכל צליל, אז אין לחץ.',
     play: [0],
     make: twinkle
+  },
+  {
+    id: 'hatikvah-rh',
+    title: 'התקווה: סולם מינור',
+    intro: 'שימו לב לתחושה המינורית ולצליל סול♯ בסוף (Shift+T). נגנו בקצב שלכם.',
+    play: [0],
+    make: hatikvah
   },
   {
     id: 'ode-rh',
@@ -64,6 +78,13 @@ export const LESSONS: Lesson[] = [
     intro: 'עכשיו שתי הידיים יחד. כשמהבהבים שני קלידים, לחצו על שניהם. אפשר בזה אחר זה, המורה יחכה.',
     play: [0, 1],
     make: twinkle
+  },
+  {
+    id: 'minuet-rh',
+    title: 'מינואט בסול: באך',
+    intro: 'יצירה קלאסית עם פה♯ (Shift+R). שמרו על זרימה נעימה של יד ימין.',
+    play: [0],
+    make: minuetInG
   },
   {
     id: 'elise-rh',

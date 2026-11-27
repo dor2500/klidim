@@ -2,7 +2,17 @@
 // work offline and cost nothing to load. Each one is created on first use.
 import * as Tone from 'tone'
 
-export type InstrumentId = 'piano' | 'epiano' | 'organ' | 'strings' | 'harpsichord' | 'musicbox' | 'synth'
+export type InstrumentId =
+  | 'piano'
+  | 'epiano'
+  | 'organ'
+  | 'strings'
+  | 'harpsichord'
+  | 'musicbox'
+  | 'synth'
+  | 'pad'
+  | 'marimba'
+  | 'bass'
 
 type Made = {
   output: Tone.ToneAudioNode
@@ -106,5 +116,42 @@ export const INSTRUMENTS: Instrument[] = [
         oscillator: { type: 'fatsquare', count: 2, spread: 14 },
         envelope: { attack: 0.01, decay: 0.3, sustain: 0.45, release: 0.55 }
       }, -21, new Tone.Filter({ type: 'lowpass', frequency: 3200, Q: 2 }))
+  },
+  {
+    id: 'pad',
+    name: 'פד חלומי',
+    hint: 'אווירה רחבה ועוטפת לשכבות',
+    emoji: '🌌',
+    create: () =>
+      poly(Tone.Synth, {
+        oscillator: { type: 'fatsawtooth', count: 4, spread: 34 },
+        envelope: { attack: 0.55, decay: 0.6, sustain: 0.9, release: 2.2 }
+      }, -22, new Tone.Filter({ type: 'lowpass', frequency: 1700, rolloff: -24 }), new Tone.Chorus({ frequency: 0.5, delayTime: 5, depth: 0.7, wet: 0.55 }).start())
+  },
+  {
+    id: 'marimba',
+    name: 'מרימבה',
+    hint: 'הקשה חמה מעץ',
+    emoji: '🪵',
+    create: () =>
+      poly(Tone.FMSynth, {
+        harmonicity: 4,
+        modulationIndex: 2.2,
+        oscillator: { type: 'sine' },
+        envelope: { attack: 0.001, decay: 0.45, sustain: 0, release: 0.35 },
+        modulation: { type: 'sine' },
+        modulationEnvelope: { attack: 0.001, decay: 0.08, sustain: 0, release: 0.1 }
+      }, -10)
+  },
+  {
+    id: 'bass',
+    name: 'בס אנלוגי',
+    hint: 'בס חם ועמוק ליד שמאל',
+    emoji: '🎸',
+    create: () =>
+      poly(Tone.Synth, {
+        oscillator: { type: 'sawtooth' },
+        envelope: { attack: 0.01, decay: 0.35, sustain: 0.55, release: 0.28 }
+      }, -16, new Tone.Filter({ type: 'lowpass', frequency: 680, rolloff: -24, Q: 2.5 }))
   }
 ]

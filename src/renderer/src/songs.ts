@@ -72,8 +72,98 @@ export function furElise(): Song {
   return makeSong('לאליזה – בטהובן', [...rh, ...lh])
 }
 
+export function yonatan(): Song {
+  const b = 0.44
+  const rh = seq(
+    `G4 E4 E4:2 F4 D4 D4:2 C4 D4 E4 F4 G4 G4 G4:2
+     G4 E4 E4:2 F4 D4 D4:2 C4 E4 G4 G4 C4:4
+     D4 D4 D4 D4 D4 E4 F4:2 E4 E4 E4 E4 E4 F4 G4:2
+     G4 E4 E4:2 F4 D4 D4:2 C4 E4 G4 G4 C4:4`,
+    b,
+    0,
+    0,
+    0.78
+  )
+  const lh = seq(
+    `C3+G3:4 G2+F3:4 C3+G3:4 G2+F3:2 C3+E3:2
+     C3+G3:4 G2+F3:4 C3+G3:4 C3+E3:4
+     G2+F3:4 G2+F3:4 C3+E3:4 C3+G3:4
+     C3+G3:4 G2+F3:4 C3+G3:4 C3+E3:4`,
+    b,
+    1,
+    0,
+    0.5
+  )
+  return makeSong('יונתן הקטן', [...rh, ...lh])
+}
+
+export function hatikvah(): Song {
+  const b = 0.48
+  const rh = seq(
+    `A4 B4 C5 D5 E5:1.5 E5:0.5 E5:2
+     F5 E5 F5 A5 E5:4
+     D5:1.5 D5:0.5 D5:1 C5:1 B4 A4 B4 C5
+     A4:1.5 A4:0.5 B4:1 C5:1 E4:4
+     A5:2 A5:2 G5 F5 E5:2
+     F5:1.5 G5:0.5 A5:1 G5:1 F5:2 E5:2
+     D5:1.5 D5:0.5 D5:1 C5:1 B4 A4 B4 C5
+     A4:1.5 A4:0.5 B4:1 G#4:1 A4:4`,
+    b,
+    0,
+    0,
+    0.78
+  )
+  const lh = seq(
+    `A2+E3:4 A2+E3:4
+     D3+A3:4 A2+E3:4
+     D3+F3:4 E3+G#3:4
+     A2+E3:4 E2+E3:4
+     A2+E3:4 C3+G3:4
+     D3+A3:4 A2+E3:4
+     D3+F3:4 E3+G#3:4
+     A2+E3:2 E2+E3:2 A2+E3:4`,
+    b,
+    1,
+    0,
+    0.48
+  )
+  return makeSong('התקווה', [...rh, ...lh])
+}
+
+export function minuetInG(): Song {
+  const b = 0.42
+  const rh = seq(
+    `D5 G4 A4 B4 C5 D5 G4:2 G4:2
+     E5 C5 D5 E5 F#5 G5 G4:2 G4:2
+     C5 D5 C5 B4 A4 B4 C5 B4 A4 G4 F#4 G4 A4 B4 G4:2 A4:4
+     D5 G4 A4 B4 C5 D5 G4:2 G4:2
+     E5 C5 D5 E5 F#5 G5 G4:2 G4:2
+     C5 D5 C5 B4 A4 B4 C5 B4 A4 G4 A4 B4 A4:1.5 G4:0.5 G4:4`,
+    b,
+    0,
+    0,
+    0.76
+  )
+  const lh = seq(
+    `G3+B3:4 A3+D4:2 B3:4
+     C4:4 B3:2 G3:4
+     A3:2 F#3:2 G3:4 D3:6
+     G3+B3:4 A3+D4:2 B3:4
+     C4:4 B3:2 G3:4
+     A3:2 F#3:2 G3:2 D3:4 G2+G3:4`,
+    b,
+    1,
+    0,
+    0.48
+  )
+  return makeSong('מינואט בסול – באך', [...rh, ...lh])
+}
+
 export const BUILTIN: { id: string; make: () => Song }[] = [
+  { id: 'yonatan', make: yonatan },
   { id: 'twinkle', make: twinkle },
+  { id: 'hatikvah', make: hatikvah },
   { id: 'ode', make: odeToJoy },
+  { id: 'minuet', make: minuetInG },
   { id: 'elise', make: furElise }
 ]

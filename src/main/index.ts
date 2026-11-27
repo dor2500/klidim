@@ -9,7 +9,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
-const BG = '#0b0d14'
+const BG = '#0b0c10'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -21,7 +21,7 @@ function createWindow(): void {
     backgroundColor: BG,
     title: 'קלידים',
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: BG, symbolColor: '#c9cdee', height: 48 },
+    titleBarOverlay: { color: BG, symbolColor: '#d6d3cd', height: 48 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,

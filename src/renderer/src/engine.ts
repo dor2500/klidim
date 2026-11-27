@@ -20,6 +20,8 @@ type Voice = {
 }
 
 export type Effects = { reverb: number; delay: number; delayTime: number; brightness: number }
+export type GrooveId = 'click' | 'pop' | 'ballad' | 'bossa'
+export type ArpMode = 'up' | 'down' | 'updown'
 
 export type TeachEvent =
   | { type: 'wait'; notes: number[]; index: number; total: number }
@@ -35,11 +37,15 @@ class Engine {
   private voices = new Map<InstrumentId, Voice>()
   private voice: Voice | null = null
   instrument: InstrumentId = 'piano'
+  layerInstrument: InstrumentId | 'none' = 'none'
+  layerMix = 0.55
+  private layerVoice: Voice | null = null
   private input!: Tone.Gain
   private filter!: Tone.Filter
   private delay!: Tone.FeedbackDelay
   private reverb!: Tone.Reverb
   private out!: Tone.Volume
+  private analyser: Tone.Analyser | null = null
   ready = false
 
   // live playing
@@ -51,6 +57,9 @@ class Engine {
   // song playback
   song: Song | null = null
   playing = false
+  loop = false
+  loopA: number | null = null
+  loopB: number | null = null
   speed = 1
   muted = new Set<number>()
   private offset = 0 // song seconds at anchor
@@ -58,6 +67,25 @@ class Engine {
   private next = 0
   private timer: number | null = null
   onSongEnd: (() => void) | null = null
+
+  // metronome & rhythm groove
+  private metroSynth: Tone.Synth | null = null
+  private kickSynth: Tone.MembraneSynth | null = null
+  private snareSynth: Tone.NoiseSynth | null = null
+  private hatSynth: Tone.NoiseSynth | null = null
+  metronome = false
+  groove: GrooveId = 'click'
+  bpm = 100
+  private metroTimer: number | null = null
+  private metroStep = 0
+  onBeat: ((beat: number) => void) | null = null
+
+  // arpeggiator
+  arpOn = false
+  arpMode: ArpMode = 'up'
+  private arpTimer: number | null = null
+  private arpIdx = 0
+  private arpDir = 1
 
   // teacher (wait mode)
   learn = false
@@ -96,6 +124,29 @@ class Engine {
     sampler.connect(this.input)
     this.voices.set('piano', sampler)
     this.voice = sampler
+    this.analyser = new Tone.Analyser('waveform', 64)
+    this.out.connect(this.analyser)
+    this.metroSynth = new Tone.Synth({
+      oscillator: { type: 'triangle' },
+      envelope: { attack: 0.001, decay: 0.04, sustain: 0, release: 0.03 }
+    }).connect(this.out)
+    this.metroSynth.volume.value = -8
+    this.kickSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.04,
+      octaves: 6,
+      envelope: { attack: 0.001, decay: 0.22, sustain: 0, release: 0.05 }
+    }).connect(this.out)
+    this.kickSynth.volume.value = -6
+    this.snareSynth = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.001, decay: 0.14, sustain: 0, release: 0.04 }
+    }).connect(this.out)
+    this.snareSynth.volume.value = -14
+    this.hatSynth = new Tone.NoiseSynth({
+      noise: { type: 'white' },
+      envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.01 }
+    }).connect(this.out)
+    this.hatSynth.volume.value = -20
     this.ready = true
   }
 
@@ -113,23 +164,46 @@ class Engine {
     if (this.out) this.out.volume.value = v <= 0 ? -Infinity : 20 * Math.log10(v) - 2
   }
 
+  private getOrCreateVoice(id: InstrumentId): Voice | null {
+    let v = this.voices.get(id)
+    if (!v) {
+      const made = INSTRUMENTS.find((i) => i.id === id)?.create?.()
+      if (!made) return null
+      made.output.connect(this.input)
+      v = made.voice
+      this.voices.set(id, v)
+    }
+    return v
+  }
+
   setInstrument(id: InstrumentId): void {
     if (!this.ready) {
       this.instrument = id
       return
     }
-    let v = this.voices.get(id)
-    if (!v) {
-      const made = INSTRUMENTS.find((i) => i.id === id)?.create?.()
-      if (!made) return
-      made.output.connect(this.input)
-      v = made.voice
-      this.voices.set(id, v)
-    }
+    const v = this.getOrCreateVoice(id)
+    if (!v) return
     this.voice?.releaseAll(Tone.now())
     this.sounding.clear()
     this.voice = v
     this.instrument = id
+  }
+
+  setLayer(id: InstrumentId | 'none', mix = this.layerMix): void {
+    this.layerInstrument = id
+    this.layerMix = Math.max(0.1, Math.min(1, mix))
+    if (!this.ready || id === 'none') {
+      this.layerVoice?.releaseAll(Tone.now())
+      this.layerVoice = null
+      return
+    }
+    this.layerVoice = this.getOrCreateVoice(id)
+  }
+
+  getWaveform(): Float32Array | null {
+    if (!this.analyser) return null
+    const val = this.analyser.getValue()
+    return val instanceof Float32Array ? val : null
   }
 
   setEffects(fx: Effects): void {
@@ -153,10 +227,19 @@ class Engine {
   noteOn(m: number, velocity = 0.8): void {
     if (!this.voice || m < 21 || m > 108) return
     void this.resume()
+    if (this.arpOn && !this.learn) {
+      this.held.add(m)
+      if (this.held.size === 1) this.startArp()
+      this.emit(m, true)
+      return
+    }
     if (this.sounding.has(m)) this.release(m)
     this.held.add(m)
     this.sounding.add(m)
     this.voice.triggerAttack(toNoteName(m), Tone.now(), velocity)
+    if (this.layerVoice && this.layerInstrument !== 'none' && this.layerInstrument !== this.instrument) {
+      this.layerVoice.triggerAttack(toNoteName(m), Tone.now(), velocity * this.layerMix)
+    }
     if (this.recording) this.recOpen.set(m, { t: wall() - this.recStart, v: velocity })
     this.emit(m, true)
     if (this.learn && this.playing) this.checkInput(m)
@@ -164,13 +247,22 @@ class Engine {
 
   noteOff(m: number): void {
     if (!this.held.delete(m)) return
+    if (this.arpOn && !this.learn) {
+      this.emit(m, false)
+      if (this.held.size === 0) this.stopArp()
+      return
+    }
     if (this.sustain) return
     this.release(m)
   }
 
   private release(m: number): void {
     if (!this.sounding.delete(m)) return
-    this.voice?.triggerRelease(toNoteName(m), Tone.now())
+    const t = Tone.now()
+    this.voice?.triggerRelease(toNoteName(m), t)
+    if (this.layerVoice && this.layerInstrument !== 'none' && this.layerInstrument !== this.instrument) {
+      this.layerVoice.triggerRelease(toNoteName(m), t)
+    }
     const open = this.recOpen.get(m)
     if (this.recording && open) {
       const end = wall() - this.recStart
@@ -186,6 +278,111 @@ class Engine {
   }
   get sustainOn(): boolean {
     return this.sustain
+  }
+
+  get activeNotes(): number[] {
+    return [...this.sounding]
+  }
+
+  setMetronome(on: boolean, bpm = this.bpm, groove = this.groove): void {
+    this.metronome = on
+    this.bpm = Math.max(40, Math.min(220, bpm))
+    this.groove = groove
+    if (this.metroTimer !== null) {
+      clearInterval(this.metroTimer)
+      this.metroTimer = null
+    }
+    if (!on) {
+      this.metroStep = 0
+      return
+    }
+    void this.resume()
+    const tick = (): void => {
+      const s = this.metroStep % 8
+      this.metroStep++
+      const now = Tone.now()
+      if (this.ready) {
+        if (this.groove === 'click') {
+          if (s % 2 === 0 && this.metroSynth) {
+            const b = s / 2
+            this.metroSynth.triggerAttackRelease(b === 0 ? 'C6' : 'G5', 0.03, now, b === 0 ? 0.75 : 0.35)
+          }
+        } else if (this.groove === 'pop') {
+          if (s === 0 || s === 4) this.kickSynth?.triggerAttackRelease('C1', '8n', now, 0.9)
+          if (s === 2 || s === 6) this.snareSynth?.triggerAttackRelease('16n', now, 0.65)
+          this.hatSynth?.triggerAttackRelease('32n', now, s % 2 === 0 ? 0.45 : 0.22)
+        } else if (this.groove === 'ballad') {
+          if (s === 0 || s === 3) this.kickSynth?.triggerAttackRelease('C1', '8n', now, 0.75)
+          if (s === 4) this.snareSynth?.triggerAttackRelease('16n', now, 0.45)
+          if (s % 2 === 0) this.hatSynth?.triggerAttackRelease('32n', now, 0.3)
+        } else if (this.groove === 'bossa') {
+          if (s === 0 || s === 3 || s === 4 || s === 7) this.kickSynth?.triggerAttackRelease('C1', '8n', now, 0.7)
+          if (s === 1 || s === 4 || s === 6) this.snareSynth?.triggerAttackRelease('32n', now, 0.35)
+          this.hatSynth?.triggerAttackRelease('32n', now, 0.28)
+        }
+      }
+      if (s % 2 === 0) this.onBeat?.(s / 2)
+    }
+    tick()
+    this.metroTimer = window.setInterval(tick, (60 / this.bpm / 2) * 1000)
+  }
+
+  setBpm(bpm: number): void {
+    this.bpm = Math.max(40, Math.min(220, bpm))
+    if (this.metronome) this.setMetronome(true, this.bpm, this.groove)
+    if (this.arpOn && this.held.size > 0) this.startArp()
+  }
+
+  setGroove(groove: GrooveId): void {
+    this.groove = groove
+    if (this.metronome) this.setMetronome(true, this.bpm, groove)
+  }
+
+  setArp(on: boolean, mode = this.arpMode): void {
+    this.arpOn = on
+    this.arpMode = mode
+    if (!on) this.stopArp()
+    else if (this.held.size > 0) this.startArp()
+  }
+
+  private startArp(): void {
+    this.stopArp()
+    this.arpIdx = 0
+    this.arpDir = 1
+    const stepMs = (60 / this.bpm / 2) * 1000
+    const step = (): void => {
+      if (!this.arpOn || this.held.size === 0 || !this.voice) return
+      const notes = [...this.held].sort((a, b) => a - b)
+      if (!notes.length) return
+      let m: number
+      if (this.arpMode === 'down') {
+        m = notes[notes.length - 1 - (this.arpIdx % notes.length)]
+        this.arpIdx++
+      } else if (this.arpMode === 'updown' && notes.length > 1) {
+        const idx = Math.max(0, Math.min(notes.length - 1, this.arpIdx))
+        m = notes[idx]
+        this.arpIdx += this.arpDir
+        if (this.arpIdx >= notes.length - 1) this.arpDir = -1
+        else if (this.arpIdx <= 0) this.arpDir = 1
+      } else {
+        m = notes[this.arpIdx % notes.length]
+        this.arpIdx++
+      }
+      const dur = Math.max(0.08, (60 / this.bpm / 2) * 0.85)
+      this.voice.triggerAttackRelease(toNoteName(m), dur, Tone.now(), 0.75)
+      if (this.layerVoice && this.layerInstrument !== 'none' && this.layerInstrument !== this.instrument) {
+        this.layerVoice.triggerAttackRelease(toNoteName(m), dur, Tone.now(), 0.75 * this.layerMix)
+      }
+    }
+    step()
+    this.arpTimer = window.setInterval(step, stepMs)
+  }
+
+  private stopArp(): void {
+    if (this.arpTimer !== null) {
+      clearInterval(this.arpTimer)
+      this.arpTimer = null
+    }
   }
 
   allLiveOff(): void {
@@ -328,7 +525,16 @@ class Engine {
       this.voice.triggerAttackRelease(toNoteName(n.midi), n.duration / this.speed, at, n.velocity)
     }
 
+    if (this.loop && !this.learn && this.loopA !== null && this.loopB !== null && this.loopB > this.loopA + 0.2 && this.time >= this.loopB) {
+      this.seek(this.loopA)
+      return
+    }
+
     if (this.time > song.duration + 0.6 && (!this.learn || this.gi >= this.groups.length)) {
+      if (this.loop && !this.learn) {
+        this.seek(this.loopA ?? 0)
+        return
+      }
       const wasLearn = this.learn
       this.stop()
       if (wasLearn) this.onTeach?.({ type: 'done', stats: this.lessonStats() })

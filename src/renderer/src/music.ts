@@ -5,8 +5,68 @@ export type Track = { name: string; count: number }
 export type Song = { name: string; notes: Note[]; duration: number; tracks: Track[] }
 
 const HE_NAMES = ['דו', 'דו♯', 'רה', 'רה♯', 'מי', 'פה', 'פה♯', 'סול', 'סול♯', 'לה', 'לה♯', 'סי']
-export const noteName = (m: number): string => `${HE_NAMES[m % 12]}${Math.floor(m / 12) - 1}`
+const EN_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B']
+export const shortNoteName = (m: number): string => HE_NAMES[((m % 12) + 12) % 12]
+export const noteName = (m: number): string => `${shortNoteName(m)}${Math.floor(m / 12) - 1}`
 export const isBlack = (m: number): boolean => [1, 3, 6, 8, 10].includes(m % 12)
+
+const CHORD_TYPES: { iv: number[]; he: string; sym: string }[] = [
+  { iv: [0, 4, 7], he: 'מז׳ור', sym: '' },
+  { iv: [0, 3, 7], he: 'מינור', sym: 'm' },
+  { iv: [0, 4, 7, 11], he: 'מז׳ור 7', sym: 'maj7' },
+  { iv: [0, 3, 7, 10], he: 'מינור 7', sym: 'm7' },
+  { iv: [0, 4, 7, 10], he: '7', sym: '7' },
+  { iv: [0, 5, 7], he: 'Sus4', sym: 'sus4' },
+  { iv: [0, 2, 7], he: 'Sus2', sym: 'sus2' },
+  { iv: [0, 3, 6], he: 'מוקטן', sym: 'dim' },
+  { iv: [0, 4, 8], he: 'מוגדל', sym: 'aug' },
+  { iv: [0, 3, 6, 10], he: 'חצי מוקטן', sym: 'm7♭5' },
+  { iv: [0, 3, 6, 9], he: 'מוקטן 7', sym: 'dim7' }
+]
+
+export type ScaleId = 'none' | 'major' | 'minor' | 'pentatonic' | 'minorPent' | 'blues' | 'hijaz'
+
+export const SCALES: { id: ScaleId; name: string; intervals: number[] }[] = [
+  { id: 'none', name: 'ללא', intervals: [] },
+  { id: 'major', name: 'מז׳ור', intervals: [0, 2, 4, 5, 7, 9, 11] },
+  { id: 'minor', name: 'מינור', intervals: [0, 2, 3, 5, 7, 8, 10] },
+  { id: 'pentatonic', name: 'פנטטוני מז׳ור', intervals: [0, 2, 4, 7, 9] },
+  { id: 'minorPent', name: 'פנטטוני מינור', intervals: [0, 3, 5, 7, 10] },
+  { id: 'blues', name: 'בלוז', intervals: [0, 3, 5, 6, 7, 10] },
+  { id: 'hijaz', name: 'חיג׳אז (מזרחי)', intervals: [0, 1, 4, 5, 7, 8, 10] }
+]
+
+export const SCALE_ROOTS = HE_NAMES.map((name, pc) => ({ pc, name }))
+
+export function scalePitchClasses(rootPc: number, scaleId: ScaleId): Set<number> {
+  const s = SCALES.find((x) => x.id === scaleId)
+  if (!s || !s.intervals.length) return new Set()
+  return new Set(s.intervals.map((iv) => (rootPc + iv) % 12))
+}
+
+/** Detects a chord from currently held MIDI notes (supports inversions). */
+export function detectChord(midis: number[]): { label: string; symbol: string } | null {
+  if (midis.length < 3) return null
+  const sorted = [...midis].sort((a, b) => a - b)
+  const bass = ((sorted[0] % 12) + 12) % 12
+  const pcs = [...new Set(sorted.map((m) => ((m % 12) + 12) % 12))]
+  if (pcs.length < 3 || pcs.length > 4) return null
+
+  // Try bass as root first, then other pitch classes for inversions
+  const candidates = [bass, ...pcs.filter((p) => p !== bass)]
+  for (const root of candidates) {
+    const ivs = pcs.map((p) => (p - root + 12) % 12).sort((a, b) => a - b)
+    for (const c of CHORD_TYPES) {
+      if (c.iv.length === ivs.length && c.iv.every((v, i) => v === ivs[i])) {
+        const inv = root !== bass
+        const he = `${HE_NAMES[root]} ${c.he}${inv ? ` / ${HE_NAMES[bass]}` : ''}`
+        const symbol = `${EN_NAMES[root]}${c.sym}${inv ? `/${EN_NAMES[bass]}` : ''}`
+        return { label: he, symbol }
+      }
+    }
+  }
+  return null
+}
 
 export const PIANO_MIN = 21 // A0
 export const PIANO_MAX = 108 // C8

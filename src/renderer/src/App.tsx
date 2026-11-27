@@ -1,19 +1,84 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { engine, type Effects, type LessonStats, type TeachEvent } from './engine'
+import { engine, type ArpMode, type Effects, type GrooveId, type LessonStats, type TeachEvent } from './engine'
 import { INSTRUMENTS, type InstrumentId } from './instruments'
 import { LESSONS, loadProgress, saveStars, starsFor, type Lesson } from './lessons'
 import { connectMidiInputs, pickMidi, saveSong, songFromMidi } from './midi'
-import { buildKeymap, codeLabel, fmtTime, isBlack, keyNote, noteName, pianoRange, type Song } from './music'
+import {
+  buildKeymap,
+  codeLabel,
+  detectChord,
+  fmtTime,
+  isBlack,
+  keyNote,
+  noteName,
+  pianoRange,
+  SCALE_ROOTS,
+  scalePitchClasses,
+  SCALES,
+  type ScaleId,
+  type Song
+} from './music'
 import { BUILTIN } from './songs'
 import { Stage, TRACK_COLORS } from './Stage'
 import { Icon } from './icons'
 
 type Labels = 'keys' | 'notes' | 'none'
-type Prefs = Effects & { volume: number; octave: number; labels: Labels; instrument: InstrumentId; touch: number }
+type ThemeId = 'brass' | 'aurora' | 'rosewood' | 'ivory'
+
+type Prefs = Effects & {
+  volume: number
+  octave: number
+  labels: Labels
+  instrument: InstrumentId
+  layerInstrument: InstrumentId | 'none'
+  layerMix: number
+  touch: number
+  bpm: number
+  groove: GrooveId
+  arpMode: ArpMode
+  scaleId: ScaleId
+  scaleRoot: number
+  showNoteNames: boolean
+  visualizer: boolean
+  theme: ThemeId
+}
+
+const THEMES: { id: ThemeId; name: string; bg: string; accent: string }[] = [
+  { id: 'brass', name: 'אולפן זהב', bg: '#0b0c10', accent: '#e5a93c' },
+  { id: 'aurora', name: 'אורורה', bg: '#090d16', accent: '#8b7cf6' },
+  { id: 'rosewood', name: 'עץ רוזווד', bg: '#140c0b', accent: '#e08e6d' },
+  { id: 'ivory', name: 'אולם מואר', bg: '#f3f0e8', accent: '#b45309' }
+]
+
+const GROOVES: { id: GrooveId; name: string }[] = [
+  { id: 'click', name: 'קליק' },
+  { id: 'pop', name: 'פופ / רוק' },
+  { id: 'ballad', name: 'בלדה' },
+  { id: 'bossa', name: 'בוסה נובה' }
+]
 
 const DEFAULT_FX: Effects = { reverb: 0.27, delay: 0, delayTime: 0.25, brightness: 1 }
-const DEFAULTS: Prefs = { volume: 0.8, octave: 0, labels: 'keys', instrument: 'piano', touch: 0.78, ...DEFAULT_FX }
+const DEFAULTS: Prefs = {
+  volume: 0.8,
+  octave: 0,
+  labels: 'keys',
+  instrument: 'piano',
+  layerInstrument: 'none',
+  layerMix: 0.55,
+  touch: 0.78,
+  bpm: 100,
+  groove: 'click',
+  arpMode: 'up',
+  scaleId: 'none',
+  scaleRoot: 0,
+  showNoteNames: true,
+  visualizer: true,
+  theme: 'brass',
+  ...DEFAULT_FX
+}
 const PREFS_KEY = 'klidim-prefs'
+const REC_KEY = 'klidim-recordings'
+
 function loadPrefs(): Prefs {
   try {
     return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(PREFS_KEY) || '{}') }
@@ -21,6 +86,24 @@ function loadPrefs(): Prefs {
     return DEFAULTS
   }
 }
+
+function loadRecordings(): Song[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(REC_KEY) || '[]')
+    return Array.isArray(raw) ? raw : []
+  } catch {
+    return []
+  }
+}
+
+function saveRecordings(list: Song[]): void {
+  try {
+    localStorage.setItem(REC_KEY, JSON.stringify(list.slice(0, 10)))
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 const fxOf = (p: Prefs): Effects => ({ reverb: p.reverb, delay: p.delay, delayTime: p.delayTime, brightness: p.brightness })
 
 type Teacher = { text: string; tone: 'info' | 'good' | 'bad' }
@@ -33,18 +116,24 @@ export function App(): React.JSX.Element {
   const [sustain, setSustain] = useState(false)
   const [song, setSong] = useState<Song | null>(null)
   const [playing, setPlaying] = useState(false)
+  const [loop, setLoop] = useState(false)
+  const [loopAB, setLoopAB] = useState<{ a: number | null; b: number | null }>({ a: null, b: null })
   const [time, setTime] = useState(0)
   const [speed, setSpeed] = useState(1)
   const [muted, setMuted] = useState<number[]>([])
   const [recording, setRecording] = useState(false)
   const [recTime, setRecTime] = useState(0)
-  const [recordings, setRecordings] = useState<Song[]>([])
+  const [recordings, setRecordings] = useState<Song[]>(loadRecordings)
   const [devices, setDevices] = useState<string[] | null>(null)
   const [menu, setMenu] = useState(false)
   const [help, setHelp] = useState(false)
   const [settings, setSettings] = useState(false)
   const [played, setPlayed] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [activeNotes, setActiveNotes] = useState<number[]>([])
+  const [metroOn, setMetroOn] = useState(false)
+  const [beat, setBeat] = useState<number | null>(null)
+  const [arpOn, setArpOn] = useState(false)
   // teacher
   const [learn, setLearn] = useState(false)
   const [mine, setMine] = useState<number[]>([0])
@@ -68,12 +157,19 @@ export function App(): React.JSX.Element {
     }
     engine.setVolume(prefs.volume)
     engine.setEffects(fxOf(prefs))
-  }, [prefs])
-  useEffect(() => {
-    if (status === 'ready') engine.setInstrument(prefs.instrument)
-  }, [prefs.instrument, status])
+    engine.setBpm(prefs.bpm)
+    engine.setGroove(prefs.groove)
+    engine.setArp(arpOn, prefs.arpMode)
+  }, [prefs, arpOn])
 
-  // boot: samples + MIDI keyboards
+  useEffect(() => {
+    if (status === 'ready') {
+      engine.setInstrument(prefs.instrument)
+      engine.setLayer(prefs.layerInstrument, prefs.layerMix)
+    }
+  }, [prefs.instrument, prefs.layerInstrument, prefs.layerMix, status])
+
+  // boot: samples + MIDI keyboards + live note listener for chord HUD
   useEffect(() => {
     const p = loadPrefs()
     engine
@@ -84,6 +180,13 @@ export function App(): React.JSX.Element {
       })
       .catch(() => setStatus('error'))
     engine.onSongEnd = () => setPlaying(false)
+    engine.onBeat = (b) => {
+      setBeat(b)
+      window.setTimeout(() => setBeat((cur) => (cur === b ? null : cur)), 140)
+    }
+    const unsubLive = engine.onLive(() => {
+      setActiveNotes(engine.activeNotes.sort((a, b) => a - b))
+    })
     void connectMidiInputs({
       noteOn: (m, v) => {
         engine.noteOn(m, v)
@@ -98,6 +201,9 @@ export function App(): React.JSX.Element {
     }).then((ok) => {
       if (!ok) setDevices([])
     })
+    return () => {
+      unsubLive()
+    }
   }, [])
 
   // UI clock
@@ -116,7 +222,10 @@ export function App(): React.JSX.Element {
     return pianoRange(extra)
   }, [keymap, song])
 
-  /** "רה4 (W)" – the note and the computer key that plays it. */
+  const chord = useMemo(() => detectChord(activeNotes), [activeNotes])
+  const scaleNotes = useMemo(() => scalePitchClasses(prefs.scaleRoot, prefs.scaleId), [prefs.scaleRoot, prefs.scaleId])
+
+  /** "רה4 · מקש W" – the note and the computer key that plays it. */
   const keyFor = useCallback(
     (m: number): string => {
       for (const [code, n] of keymap) if (n === m) return codeLabel(code)
@@ -235,6 +344,9 @@ export function App(): React.JSX.Element {
   // ---------- song actions ----------
   const loadSong = (s: Song | null): void => {
     engine.load(s)
+    engine.loopA = null
+    engine.loopB = null
+    setLoopAB({ a: null, b: null })
     setSong(s)
     setPlaying(false)
     setTime(0)
@@ -262,6 +374,32 @@ export function App(): React.JSX.Element {
     setTime(0)
     if (engine.learn) setProgress(engine.lessonProgress)
   }
+  const toggleLoop = (): void => {
+    const next = !loop
+    engine.loop = next
+    setLoop(next)
+  }
+  const cycleAB = (): void => {
+    if (learn) return
+    if (loopAB.a === null) {
+      const a = engine.time
+      engine.loopA = a
+      setLoopAB({ a, b: null })
+      say(`נקודה A נקבעה (${fmtTime(a)})`)
+    } else if (loopAB.b === null) {
+      const b = Math.max(loopAB.a + 0.5, engine.time)
+      engine.loopB = b
+      engine.loop = true
+      setLoop(true)
+      setLoopAB({ a: loopAB.a, b })
+      say(`חזרה בין ${fmtTime(loopAB.a)} ל-${fmtTime(b)}`)
+    } else {
+      engine.loopA = null
+      engine.loopB = null
+      setLoopAB({ a: null, b: null })
+      say('סימון A–B בוטל')
+    }
+  }
   const openFile = async (): Promise<void> => {
     setMenu(false)
     try {
@@ -284,6 +422,13 @@ export function App(): React.JSX.Element {
     const use = valid.length ? valid : [0]
     engine.stop()
     engine.setLearn(on, use)
+    if (on) {
+      engine.loop = false
+      engine.loopA = null
+      engine.loopB = null
+      setLoop(false)
+      setLoopAB({ a: null, b: null })
+    }
     setPlaying(false)
     setTime(0)
     setLearn(on)
@@ -305,6 +450,8 @@ export function App(): React.JSX.Element {
     const s = l.make()
     loadSong(s)
     engine.setLearn(true, l.play)
+    engine.loop = false
+    setLoop(false)
     setLesson(l)
     setLearn(true)
     setMine(l.play)
@@ -312,6 +459,7 @@ export function App(): React.JSX.Element {
     setTeacher({ text: l.intro, tone: 'info' })
   }
   const nextLesson = lesson ? LESSONS[LESSONS.findIndex((l) => l.id === lesson.id) + 1] : undefined
+  const completedCount = LESSONS.filter((l) => (stars[l.id] ?? 0) > 0).length
 
   // drag & drop a .mid file anywhere
   useEffect(() => {
@@ -345,9 +493,21 @@ export function App(): React.JSX.Element {
     const s = engine.stopRecording()
     setRecording(false)
     if (!s) return say('לא נוגנו תווים, אין מה לשמור')
-    setRecordings((r) => [s, ...r])
+    setRecordings((prev) => {
+      const next = [s, ...prev].slice(0, 10)
+      saveRecordings(next)
+      return next
+    })
     loadSong(s)
-    say('ההקלטה מוכנה. אפשר לנגן אותה או לשמור')
+    say('ההקלטה מוכנה ונשמרה ברשימה')
+  }
+  const deleteRecording = (idx: number, e: React.MouseEvent): void => {
+    e.stopPropagation()
+    setRecordings((prev) => {
+      const next = prev.filter((_, i) => i !== idx)
+      saveRecordings(next)
+      return next
+    })
   }
   const save = async (): Promise<void> => {
     if (!song) return
@@ -355,20 +515,35 @@ export function App(): React.JSX.Element {
     if (p) say('נשמר בהצלחה')
   }
 
+  // ---------- metronome & arp ----------
+  const toggleMetro = (): void => {
+    const next = !metroOn
+    engine.setMetronome(next, prefs.bpm, prefs.groove)
+    setMetroOn(next)
+    if (!next) setBeat(null)
+  }
+  const toggleArp = (): void => {
+    const next = !arpOn
+    setArpOn(next)
+    engine.setArp(next, prefs.arpMode)
+    say(next ? 'ארפג׳יאטור פעיל – החזיקו אקורד!' : 'ארפג׳יאטור כבוי')
+  }
+
   const setOct = (d: number): void => setPrefs((p) => ({ ...p, octave: Math.max(-2, Math.min(2, p.octave + d)) }))
   const set = <K extends keyof Prefs>(k: K, v: Prefs[K]): void => setPrefs((p) => ({ ...p, [k]: v }))
   const blurAfter = (e: React.MouseEvent): void => (e.currentTarget as HTMLElement).blur()
   const inst = INSTRUMENTS.find((i) => i.id === prefs.instrument) ?? INSTRUMENTS[0]
+  const layerInst = prefs.layerInstrument !== 'none' ? INSTRUMENTS.find((i) => i.id === prefs.layerInstrument) : null
 
   return (
-    <div className="app" onMouseUp={blurAfter}>
+    <div className="app" data-theme={prefs.theme} onMouseUp={blurAfter}>
       <header className="titlebar">
         <div className="brand">
           <span className="logo" aria-hidden>
             <Icon name="logo" />
           </span>
           <span className="brand-name">קלידים</span>
-          <span className="brand-sub">Klidim</span>
+          <span className="brand-sub">STUDIO</span>
         </div>
 
         <div className="song-picker">
@@ -381,10 +556,13 @@ export function App(): React.JSX.Element {
             <>
               <div className="scrim" onClick={() => setMenu(false)} />
               <div className="menu" role="menu">
-                <div className="menu-label">שיעורים עם המורה</div>
+                <div className="menu-head">
+                  <span className="menu-label">שיעורים עם המורה</span>
+                  <span className="menu-badge">{completedCount}/{LESSONS.length}</span>
+                </div>
                 <div className="lesson-list">
                   {LESSONS.map((l, i) => (
-                    <button key={l.id} className="menu-item lesson" onClick={() => startLesson(l)}>
+                    <button key={l.id} className={`menu-item lesson ${lesson?.id === l.id ? 'active' : ''}`} onClick={() => startLesson(l)}>
                       <span className="step">{i + 1}</span>
                       <span className="lesson-title">{l.title}</span>
                       <span className="stars" aria-label={`${stars[l.id] ?? 0} כוכבים`}>
@@ -395,29 +573,49 @@ export function App(): React.JSX.Element {
                     </button>
                   ))}
                 </div>
-                <div className="menu-label">שירים</div>
-                {BUILTIN.map((b) => {
-                  const s = b.make()
-                  return (
-                    <button key={b.id} className="menu-item" onClick={() => loadSong(s)}>
-                      <Icon name="note" /> {s.name}
-                      <span className="menu-meta">{fmtTime(s.duration)}</span>
-                    </button>
-                  )
-                })}
+
+                <div className="menu-head">
+                  <span className="menu-label">ספריית שירים</span>
+                </div>
+                <div className="song-grid">
+                  {BUILTIN.map((b) => {
+                    const s = b.make()
+                    return (
+                      <button key={b.id} className={`menu-item ${song?.name === s.name && !lesson ? 'active' : ''}`} onClick={() => loadSong(s)}>
+                        <Icon name="note" />
+                        <span className="lesson-title">{s.name}</span>
+                        <span className="menu-meta">{fmtTime(s.duration)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
                 <button className="menu-item accent" onClick={openFile}>
-                  <Icon name="folder" /> פתיחת קובץ MIDI…
+                  <Icon name="folder" /> פתיחת קובץ MIDI מהמחשב…
                 </button>
-                {recordings.length > 0 && <div className="menu-label">ההקלטות שלי</div>}
-                {recordings.map((r, i) => (
-                  <button key={i} className="menu-item" onClick={() => loadSong(r)}>
-                    <Icon name="mic" /> {r.name}
-                    <span className="menu-meta">{fmtTime(r.duration)}</span>
-                  </button>
-                ))}
+
+                {recordings.length > 0 && (
+                  <>
+                    <div className="menu-head">
+                      <span className="menu-label">ההקלטות שלי</span>
+                    </div>
+                    {recordings.map((r, i) => (
+                      <div key={i} className="menu-row">
+                        <button className="menu-item" onClick={() => loadSong(r)}>
+                          <Icon name="mic" />
+                          <span className="lesson-title">{r.name}</span>
+                          <span className="menu-meta">{fmtTime(r.duration)}</span>
+                        </button>
+                        <button className="icon-del" onClick={(e) => deleteRecording(i, e)} title="מחיקת הקלטה" aria-label="מחיקת הקלטה">
+                          <Icon name="trash" />
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+
                 {song && (
                   <button className="menu-item muted" onClick={() => loadSong(null)}>
-                    <Icon name="close" /> נגינה חופשית (בלי שיר)
+                    <Icon name="close" /> חזרה לנגינה חופשית
                   </button>
                 )}
               </div>
@@ -426,12 +624,34 @@ export function App(): React.JSX.Element {
         </div>
 
         <div className={`chip ${devices && devices.length ? 'on' : ''}`} title={devices?.join(', ') || ''}>
+          <span className="chip-dot" aria-hidden />
           <Icon name="midi" />
-          {devices === null ? 'מחפש מקלדת MIDI…' : devices.length ? devices[0] : 'אין מקלדת MIDI'}
+          {devices === null ? 'מחפש MIDI…' : devices.length ? devices[0] : 'ללא מקלדת MIDI'}
         </div>
       </header>
 
       <main className="main">
+        {/* Live Chord & Note Detector HUD */}
+        {activeNotes.length > 0 && (
+          <div className="chord-hud" aria-live="off">
+            {chord ? (
+              <>
+                <span className="chord-sym" dir="ltr">{chord.symbol}</span>
+                <span className="chord-name">{chord.label}</span>
+              </>
+            ) : (
+              <span className="chord-notes">{activeNotes.slice(0, 5).map(noteName).join(' · ')}</span>
+            )}
+          </div>
+        )}
+
+        {/* Active Scale Pill when scale highlight is enabled */}
+        {prefs.scaleId !== 'none' && (
+          <button className="scale-hud" onClick={() => setSettings(true)} title="הדגשת סולם פעילה – לחצו לשינוי">
+            סולם: {SCALE_ROOTS[prefs.scaleRoot]?.name} {SCALES.find((s) => s.id === prefs.scaleId)?.name}
+          </button>
+        )}
+
         {song && (
           <div className="top-stack">
             <div className="transport">
@@ -440,6 +660,22 @@ export function App(): React.JSX.Element {
               </button>
               <button className="round" onClick={stopSong} title="עצירה">
                 <Icon name="stop" />
+              </button>
+              <button
+                className={`round ${loop ? 'lit' : ''}`}
+                onClick={toggleLoop}
+                disabled={learn}
+                title={learn ? 'חזרה אוטומטית זמינה במצב האזנה' : 'חזרה על השיר (Loop)'}
+              >
+                <Icon name="loop" />
+              </button>
+              <button
+                className={`ab-btn ${loopAB.a !== null ? 'lit' : ''}`}
+                onClick={cycleAB}
+                disabled={learn}
+                title="סימון קטע A–B לחזרה"
+              >
+                {loopAB.a === null ? 'A–B' : loopAB.b === null ? 'A…' : 'A⇄B'}
               </button>
               <span className="clock">{fmtTime(time)}</span>
               <input
@@ -509,7 +745,14 @@ export function App(): React.JSX.Element {
                   <Icon name="teacher" />
                 </span>
                 <div className="teacher-body">
-                  <div className="teacher-name">המורה</div>
+                  <div className="teacher-top">
+                    <span className="teacher-name">המורה האישי</span>
+                    {progress.total > 0 && (
+                      <span className="teacher-count" dir="ltr">
+                        {progress.index} / {progress.total}
+                      </span>
+                    )}
+                  </div>
                   <div className="teacher-text">{teacher.text}</div>
                   {progress.total > 0 && (
                     <div className="teacher-progress">
@@ -530,11 +773,18 @@ export function App(): React.JSX.Element {
 
         {!song && !played && status === 'ready' && (
           <div className="welcome">
-            <h1>נגנו מהמקלדת</h1>
+            <div className="welcome-badge">
+              <Icon name="sparkles" /> פסנתר כנף וסטודיו ללימוד
+            </div>
+            <h1>הבמה שלכם מוכנה</h1>
             <p>
-              כל שורה במקלדת עולה בסולם משמאל לימין: <b>Z</b>, <b>A</b>, <b>Q</b> ו-<b>1</b> הם דו, כל שורה
-              באוקטבה מעל הקודמת. <b>Shift</b> עם מקש מנגן את הקליד השחור, ומקש הרווח הוא דוושת ההדהוד.
+              נגנו בחופשיות עם 10 כלי נגינה, שכבות צליל, ארפג׳יאטור, מקצבי תופים ומורה אישי צמוד.
             </p>
+            <div className="key-guide" aria-hidden>
+              <span><kbd>Z</kbd>–<kbd>1</kbd> ארבע אוקטבות</span>
+              <span><kbd>Shift</kbd> קליד שחור</span>
+              <span><kbd>רווח</kbd> דוושת הדהוד</span>
+            </div>
             <div className="welcome-actions">
               <button className="btn primary" onClick={() => startLesson(LESSONS[0])}>
                 <Icon name="teacher" /> שיעור ראשון עם המורה
@@ -545,10 +795,19 @@ export function App(): React.JSX.Element {
             </div>
           </div>
         )}
-        {status === 'loading' && <div className="welcome"><div className="spinner" /><p>טוען את צליל הפסנתר…</p></div>}
+        {status === 'loading' && <div className="welcome"><div className="spinner" /><p>מכוון את פסנתר הכנף…</p></div>}
         {status === 'error' && <div className="welcome"><h1>הצליל לא נטען</h1><p>נסו לפתוח את התוכנה מחדש.</p></div>}
 
-        <Stage lo={lo} hi={hi} keymap={keymap} labels={prefs.labels} />
+        <Stage
+          lo={lo}
+          hi={hi}
+          keymap={keymap}
+          labels={prefs.labels}
+          showNoteNames={prefs.showNoteNames}
+          visualizer={prefs.visualizer}
+          scaleNotes={scaleNotes}
+          scaleRoot={prefs.scaleRoot}
+        />
       </main>
 
       <footer className="controls">
@@ -562,10 +821,10 @@ export function App(): React.JSX.Element {
           </button>
         </div>
 
-        <div className="group">
-          <button className="inst-chip" onClick={() => setSettings(true)} title="החלפת כלי נגינה">
+        <div className="group center-controls">
+          <button className="inst-chip" onClick={() => setSettings(true)} title="החלפת כלי נגינה ושכבות">
             <span className="emoji" aria-hidden>{inst.emoji}</span>
-            {inst.name}
+            <span>{inst.name}{layerInst ? ` + ${layerInst.name}` : ''}</span>
           </button>
           <label className="ctl">
             <span>אוקטבה</span>
@@ -583,6 +842,19 @@ export function App(): React.JSX.Element {
               <button onClick={() => setTranspose((t) => Math.min(11, t + 1))} aria-label="חצי טון למעלה">+</button>
             </span>
           </label>
+          <div className="metro-group">
+            <button className={`pedal ${metroOn ? 'on' : ''}`} onClick={toggleMetro} title="מטרונום ומקצב">
+              <span className={`beat-led ${beat === 0 ? 'accent' : beat !== null ? 'on' : ''}`} />
+              <Icon name={prefs.groove === 'click' ? 'metronome' : 'drum'} /> {prefs.bpm}
+            </button>
+            <div className="stepper compact">
+              <button onClick={() => set('bpm', Math.max(40, prefs.bpm - 5))} aria-label="האט מטרונום">−</button>
+              <button onClick={() => set('bpm', Math.min(220, prefs.bpm + 5))} aria-label="האץ מטרונום">+</button>
+            </div>
+          </div>
+          <button className={`pedal ${arpOn ? 'on' : ''}`} onClick={toggleArp} title="ארפג׳יאטור – מפרק אקורדים אוטומטית לפי הקצב">
+            <Icon name="arp" /> ארפג׳יו
+          </button>
           <button
             className={`pedal ${sustain ? 'on' : ''}`}
             onPointerDown={() => {
@@ -609,7 +881,7 @@ export function App(): React.JSX.Element {
               style={{ ['--p' as string]: `${prefs.volume * 100}%` }}
             />
           </label>
-          <button className="round" onClick={() => setSettings(true)} title="הגדרות צליל">
+          <button className="round" onClick={() => setSettings(true)} title="הגדרות סטודיו">
             <Icon name="gear" />
           </button>
           <button className="round" onClick={() => setHelp(true)} title="קיצורי מקלדת">
@@ -622,14 +894,32 @@ export function App(): React.JSX.Element {
         <div className="drawer-wrap" onClick={() => setSettings(false)}>
           <aside className="drawer" onClick={(e) => e.stopPropagation()} aria-label="הגדרות">
             <div className="drawer-head">
-              <h2>הגדרות</h2>
+              <h2>הגדרות סטודיו</h2>
               <button className="round" onClick={() => setSettings(false)} aria-label="סגירה">
                 <Icon name="close" />
               </button>
             </div>
 
             <section>
-              <h3>כלי נגינה</h3>
+              <h3><Icon name="palette" /> ערכת נושא</h3>
+              <div className="theme-grid">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.id}
+                    className={`theme-card ${prefs.theme === t.id ? 'on' : ''}`}
+                    onClick={() => set('theme', t.id)}
+                  >
+                    <span className="theme-swatch" style={{ background: t.bg, borderColor: t.accent }}>
+                      <span style={{ background: t.accent }} />
+                    </span>
+                    <span>{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h3>כלי נגינה ראשי</h3>
               <div className="inst-grid">
                 {INSTRUMENTS.map((i) => (
                   <button key={i.id} className={`inst ${prefs.instrument === i.id ? 'on' : ''}`} onClick={() => set('instrument', i.id)}>
@@ -642,7 +932,31 @@ export function App(): React.JSX.Element {
             </section>
 
             <section>
-              <h3>אפקטים</h3>
+              <h3><Icon name="layers" /> שכבת צליל שנייה (Dual Layer)</h3>
+              <div className="layer-chips">
+                <button
+                  className={`chip-btn ${prefs.layerInstrument === 'none' ? 'on' : ''}`}
+                  onClick={() => set('layerInstrument', 'none')}
+                >
+                  ללא
+                </button>
+                {INSTRUMENTS.filter((i) => i.id !== prefs.instrument).map((i) => (
+                  <button
+                    key={i.id}
+                    className={`chip-btn ${prefs.layerInstrument === i.id ? 'on' : ''}`}
+                    onClick={() => set('layerInstrument', i.id)}
+                  >
+                    {i.emoji} {i.name}
+                  </button>
+                ))}
+              </div>
+              {prefs.layerInstrument !== 'none' && (
+                <Slider label="עוצמת השכבה השנייה" hint="איזון בין הכלי הראשי לשכבה" value={prefs.layerMix} onChange={(v) => set('layerMix', v)} />
+              )}
+            </section>
+
+            <section>
+              <h3>אפקטים ואקוסטיקה</h3>
               <Slider label="הד (ריוורב)" hint="כמה החדר מהדהד" value={prefs.reverb} onChange={(v) => set('reverb', v)} />
               <Slider label="השהייה (אקו)" hint="חזרות של הצליל אחרי הנגינה" value={prefs.delay} onChange={(v) => set('delay', v)} />
               <div className="row">
@@ -665,7 +979,52 @@ export function App(): React.JSX.Element {
             </section>
 
             <section>
-              <h3>נגינה</h3>
+              <h3>מקצב, ארפג׳יו וסולם</h3>
+              <div className="row">
+                <span>סגנון מטרונום</span>
+                <div className="seg">
+                  {GROOVES.map((g) => (
+                    <button key={g.id} className={prefs.groove === g.id ? 'on' : ''} onClick={() => set('groove', g.id)}>
+                      {g.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>דפוס ארפג׳יו</span>
+                <div className="seg">
+                  {(
+                    [
+                      ['up', 'עולה'],
+                      ['down', 'יורד'],
+                      ['updown', 'הלוך-חזור']
+                    ] as const
+                  ).map(([v, l]) => (
+                    <button key={v} className={prefs.arpMode === v ? 'on' : ''} onClick={() => set('arpMode', v)}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="row">
+                <span>הדגשת סולם</span>
+                <div className="scale-pick">
+                  <select value={prefs.scaleRoot} onChange={(e) => set('scaleRoot', Number(e.target.value))} disabled={prefs.scaleId === 'none'}>
+                    {SCALE_ROOTS.map((r) => (
+                      <option key={r.pc} value={r.pc}>{r.name}</option>
+                    ))}
+                  </select>
+                  <select value={prefs.scaleId} onChange={(e) => set('scaleId', e.target.value as ScaleId)}>
+                    {SCALES.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3>נגינה ותצוגה</h3>
               <Slider label="עוצמת הקשה מהמקלדת" hint="כמה חזק נשמע מקש במקלדת המחשב" value={(prefs.touch - 0.3) / 0.7} onChange={(v) => set('touch', 0.3 + v * 0.7)} />
               <div className="row">
                 <span>מה כתוב על הקלידים</span>
@@ -683,9 +1042,38 @@ export function App(): React.JSX.Element {
                   ))}
                 </div>
               </div>
+              <div className="row">
+                <span>שמות תווים על קוביות נופלות</span>
+                <div className="seg">
+                  <button className={prefs.showNoteNames ? 'on' : ''} onClick={() => set('showNoteNames', true)}>מוצג</button>
+                  <button className={!prefs.showNoteNames ? 'on' : ''} onClick={() => set('showNoteNames', false)}>מוסתר</button>
+                </div>
+              </div>
+              <div className="row">
+                <span>גל קול חי (Visualizer)</span>
+                <div className="seg">
+                  <button className={prefs.visualizer ? 'on' : ''} onClick={() => set('visualizer', true)}>פעיל</button>
+                  <button className={!prefs.visualizer ? 'on' : ''} onClick={() => set('visualizer', false)}>כבוי</button>
+                </div>
+              </div>
             </section>
 
-            <button className="btn ghost reset" onClick={() => setPrefs((p) => ({ ...p, ...DEFAULT_FX, touch: DEFAULTS.touch, instrument: 'piano' }))}>
+            <button
+              className="btn ghost reset"
+              onClick={() =>
+                setPrefs((p) => ({
+                  ...p,
+                  ...DEFAULT_FX,
+                  touch: DEFAULTS.touch,
+                  instrument: 'piano',
+                  layerInstrument: 'none',
+                  scaleId: 'none',
+                  showNoteNames: true,
+                  visualizer: true,
+                  theme: 'brass'
+                }))
+              }
+            >
               איפוס להגדרות ברירת המחדל
             </button>
           </aside>
